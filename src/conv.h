@@ -26,8 +26,8 @@ struct conv_context {
     int pitch;
     void  *in;        // device mem
     float *out;       // device mem
-    float * kernel;   // device mem
-    unsigned nkernel;
+    const float *kernel[2];  // device mem
+    unsigned nkernel[2];
 };
 
 /** Initializes a context.
@@ -71,7 +71,7 @@ void conv_push(struct conv_context *self, void *im);
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `conv_alloc` and `conv_copy` functions.
 */
-void conv(const struct conv_context *self, const struct conv_parameters params);
+void conv(const struct conv_context *self);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 
@@ -88,3 +88,10 @@ void  conv_copy(const struct conv_context *self, float *out);
 #endif
 
 #endif
+
+
+/* TODO
+
+- Kernel is added on init of context, but it's more natural to let that 
+  vary without needing to reinit a context.
+*/

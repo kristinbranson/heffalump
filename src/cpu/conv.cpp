@@ -1,4 +1,5 @@
 #include "../conv.h"
+#include <cstdlib>
 
 struct conv_context conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
@@ -9,35 +10,40 @@ struct conv_context conv_init(
     const float    *kernel[2],
     const unsigned nkernel[2]
 ) {
-
+    return (struct conv_context ){
+        .logger=logger,
+        .w=w,
+        .h=h,
+        .pitch=pitch,
+        .out=malloc(pitch*h*sizeof(float)),
+        .kernel[0]=kernel[0],    // FIXME: ownership!
+        .kernel[1]=kernel[1],
+        .nkernel[0]=nkernel[0],
+        .nkernel[1]=nkernel[1]
+    };
 }
 
-/** Release any resources associated with the context 
-*/
-void conv_teardown(struct conv_context *self) {
-
+void conv_teardown(struct conv_context *self) { 
+    free(self->out);
 }
 
-/** Adds an image to the time stream.
-    We only really consider two timepoints, so in essence this does a buffer swap.
-    To start things off, it's necessary to push twice.
+void conv_push(struct conv_context *self, void *im) {
+    self.im=im; // FIXME: ownership!
+}
 
-    Some computation might be performed by this step, and maybe a memory transfer.
-*/
-void conv_push(struct conv_context *self, void *im);
+namespace private {
+template<typename T> conv()
+}
 
-/** Performs Lukas-Kanade using the pushed images.
-    The result is stored in the context.  To extract the results to a buffer in RAM,
-    see the `conv_alloc` and `conv_copy` functions.
-*/
-void conv(const struct conv_context *self, const struct conv_parameters params);
+void conv(const struct conv_context *self) {
+//TODO
+    abort();
+}
 
-/** Allocates a results buffer using the supplied `alloc` function.
-    The returned buffer will have enough capacity for it to be used with 
-    the conv_copy() function.
-*/
-void* conv_alloc(const struct conv_context *self, void (*alloc)(size_t nbytes));
+void* conv_alloc(const struct conv_context *self, void (*alloc)(size_t nbytes)) {
+    return alloc(pitch*h*sizeof(float));
+}
 
-/** Copy the result buffer to out.
-*/
-void  conv_copy(const struct conv_context *self, float *out);
+void  conv_copy(const struct conv_context *self, float *out) {
+    memcpy(out,self->out,pitch*h*sizeof(float));
+}
