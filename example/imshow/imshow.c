@@ -11,7 +11,7 @@ static const char FRAG[]=GLSL(
     void main(){
         vec4 c=texture(im,tex_);
         c.r=(c.r-zero)/range;
-        color=vec4(c.r,c.r,c.r,c.r);
+        color=vec4(c.r,c.r,c.r,1.0);
     }
 );
 
@@ -164,7 +164,7 @@ static void show(enum imshow_scalar_type t,int w,int h,const void *data) {
             return;//ERR("Unsupported type for texture.\n");
     }
     glBindTexture(GL_TEXTURE_2D,image_->tex);
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RED,w,h,0,GL_RED,type,data);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_R32F,w,h,0,GL_RED,type,data);
     glBindTexture(GL_TEXTURE_2D,0);
 
     mingl_check();

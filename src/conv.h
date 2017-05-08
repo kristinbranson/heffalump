@@ -71,7 +71,7 @@ void conv_push(struct conv_context *self, void *im);
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `conv_alloc` and `conv_copy` functions.
 */
-void conv(const struct conv_context *self);
+void conv(struct conv_context *self);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 

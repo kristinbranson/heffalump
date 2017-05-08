@@ -1,13 +1,12 @@
 // Start a window and show a test greyscale image
-
 #define _CRT_SECURE_NO_WARNINGS
-//#include <app.h>
-//#include <imshow.h>
 #include <stdio.h>
 #include <SFMT.h>
 #include <windows.h>
 #include "tictoc.h"
 #include <conv.h>
+#include "imshow.h"
+#include "app.h"
 
 static void logger(int is_error,const char *file,int line,const char* function,const char *fmt,...) {
     char buf1[1024]={0},buf2[1024]={0};
@@ -39,13 +38,16 @@ static char* im() {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-
-    struct conv_context ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);
+    const float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
+    float *ks[]={k,k};
+    unsigned nks[]={5,5};
+    struct conv_context ctx=conv_init(logger,conv_u8,256,128,256,ks,nks);
     app_init(logger);
+    imshow_contrast(imshow_f32,0,5*255.0);
     while(app_is_running()) {
         conv_push(&ctx,im());
         conv(&ctx);
-        imshow(imshow_u8,256,256,ctx->out);
+        imshow(imshow_f32,256,128,ctx.out);
     }
     conv_teardown(&ctx);
     return 0;

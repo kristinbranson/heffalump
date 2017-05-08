@@ -3,7 +3,7 @@ project(hog)
 
 find_package(CUDA)
 
-#include(cmake/git-tag.cmake)
+include(cmake/git-tag.cmake)
 include(cmake/ide.cmake)
 
 add_subdirectory(src)

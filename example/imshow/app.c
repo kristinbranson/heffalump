@@ -36,8 +36,12 @@ struct App {
 
 static struct App app;
 
+
+
 const char* app_version() {
-    return "Version " GIT_TAG GIT_HASH;
+    #define STR(e) #e
+    return "Version " STR(GIT_TAG) STR(GIT_HASH);
+    #undef STR
 }
 
 static void app_resize(unsigned w,unsigned h) {
@@ -59,8 +63,8 @@ static void create_gl_context(HWND h) {
 
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribs = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
     static int const glattriblist[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB,  2,
-        WGL_CONTEXT_MINOR_VERSION_ARB,  0,
+        WGL_CONTEXT_MAJOR_VERSION_ARB,  3,
+        WGL_CONTEXT_MINOR_VERSION_ARB,  3,
         WGL_CONTEXT_FLAGS_ARB,          WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
         0
     };
@@ -70,7 +74,7 @@ static void create_gl_context(HWND h) {
     ReleaseDC(h,hdc);
 
     PFNWGLSWAPINTERVALEXTPROC wglSwapInterval=(PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
-    //wglSwapInterval(0); // 0: turn vsync off, 1: turn vsync on
+    wglSwapInterval(0); // 0: turn vsync off, 1: turn vsync on
 }
 
 static LRESULT CALLBACK winproc(HWND h,UINT msg,WPARAM wparam,LPARAM lparam) {
