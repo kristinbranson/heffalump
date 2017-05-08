@@ -12,6 +12,11 @@ write-output $watcher
 #. (join-path $root build_init.ps1)
 while(1) {
     $watcher.WaitForChanged("All")
-    . (join-path $root "build.ps1")
+    try{
+        . (join-path $root "build.ps1")
+    } catch {
+        write-host $_.Exception.Message
+    }
     write-host "---------------------------"
 }
+

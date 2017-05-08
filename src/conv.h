@@ -77,7 +77,7 @@ void conv(const struct conv_context *self);
     The returned buffer will have enough capacity for it to be used with 
     the conv_copy() function.
 */
-void* conv_alloc(const struct conv_context *self, void (*alloc)(size_t nbytes));
+void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes));
 
 /** Copy the result buffer to out.
 */
