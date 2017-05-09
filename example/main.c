@@ -8,6 +8,8 @@
 #include "imshow.h"
 #include "app.h"
 
+#define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+
 static void logger(int is_error,const char *file,int line,const char* function,const char *fmt,...) {
     char buf1[1024]={0},buf2[1024]={0};
     va_list ap;
@@ -39,16 +41,39 @@ static char* im() {
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     const float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
-    float *ks[]={k,k};
+    const float *ks[]={k,k};
     unsigned nks[]={5,5};
-    struct conv_context ctx=conv_init(logger,conv_u8,256,128,256,ks,nks);
+    struct conv_context ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);
     app_init(logger);
     imshow_contrast(imshow_f32,0,5*5*255.0);
+    TicTocTimer clock;
+    float acc=0.0f,nframes=0.0f;
     while(app_is_running()) {
-        conv_push(&ctx,im());
+        char* input=im();
+        clock=tic();
+        conv_push(&ctx,input);
         conv(&ctx);
+        acc+=(float)toc(&clock);
+        ++nframes;
         imshow(imshow_f32,256,128,ctx.out);
     }
     conv_teardown(&ctx);
+    LOG("nframes: %f\n",nframes);
+    LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
+    LOG("Mean convolution throughput: %f MB/s\n",1e-6*nframes*256*256/acc);
     return 0;
 }
+
+/* 
+ * TIMING DATA 
+ * 
+ * (5x5 kernel, 256x256 inputs, HAL9001)
+ * - cpu Release - malloc in conv
+ *   57.5 MB/s (1138 us/frame)
+ * - cpu Release - no malloc in conv
+ *   67.8 MB/s (966 us/frame)
+ * - cpu Release - specialize for unit strides
+ *   77.7 MB/s (843 us/frame)
+ * 
+ * 
+ */

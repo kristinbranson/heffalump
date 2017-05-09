@@ -28,6 +28,7 @@ struct conv_context {
     float *out;       // device mem
     const float *kernel[2];  // device mem
     unsigned nkernel[2];
+    void *workspace;
 };
 
 /** Initializes a context.
