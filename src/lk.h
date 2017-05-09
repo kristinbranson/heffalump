@@ -6,7 +6,6 @@
 extern "C" {
 #endif
 
-
 enum lk_scalar_type {
     lk_u8,
     lk_u16,
@@ -21,7 +20,10 @@ enum lk_scalar_type {
 };
 
 struct lk_parameters {
-    float sigma_weight,sigma_derivative;
+    struct {
+        float derivative;
+        float smoothing;
+    } sigma;
 };
 
 struct lk_context {
@@ -29,8 +31,8 @@ struct lk_context {
     enum lk_scalar_type type;
     unsigned w,h;
     int pitch;
-    void  *t[2];   // device mem - timepoints
     float *result; // device mem - output
+    void *workspace;
 };
 
 /** Initializes a context.
@@ -53,7 +55,8 @@ struct lk_context lk_init(
     enum lk_scalar_type type,
     unsigned w,
     unsigned h,
-    unsigned pitch
+    unsigned pitch,
+    const struct lk_parameters params
 );
 
 /** Release any resources associated with the context 
@@ -72,7 +75,7 @@ void lk_push(struct lk_context *self, void *im);
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `lk_alloc` and `lk_copy` functions.
 */
-void lk(const struct lk_context *self, const struct lk_parameters params);
+void lk(const struct lk_context *self);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 

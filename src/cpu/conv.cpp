@@ -264,3 +264,21 @@ void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes))
 void  conv_copy(const struct conv_context *self, float *out) {
     memcpy(out,self->out,self->pitch*self->h*sizeof(float));
 }
+
+/*
+ * NOTES ON BOUNDARY CONDITIONS
+ * 
+ * Other things to try/enable
+ * 
+ *   - allow oob access (no bc handling)
+ *   
+ *     This would be work for subwindows that were sufficiently interior
+ *     and require no computational overhead
+ *     
+ *   - wrap
+ *   - reflect
+ *   
+ *      When would I want this....fourier stuff?
+ *      
+ *   - set bg to a constant
+ */
