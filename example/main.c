@@ -43,7 +43,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     unsigned nks[]={5,5};
     struct conv_context ctx=conv_init(logger,conv_u8,256,128,256,ks,nks);
     app_init(logger);
-    imshow_contrast(imshow_f32,0,5*255.0);
+    imshow_contrast(imshow_f32,0,5*5*255.0);
     while(app_is_running()) {
         conv_push(&ctx,im());
         conv(&ctx);

@@ -20,57 +20,101 @@ using f32= float;
 using f64= double;
 
 namespace priv {
-    // FIXME: Center kernel and handle boundary on both sides.
-    template<typename T> void conv1d(float *out,const T* const in,unsigned p, unsigned n, const float * const k,unsigned nk) {
-        assert(nk!=0);
-        decltype(n) j;
-        for(j=0;j<=(n-nk);++j) {
-            auto acc=0.0f;
-            for(decltype(nk) i=0;i<nk;++i)
-                acc+=k[i]*(float)in[(j+i)*p];
-            out[p*j]=acc;
-        }
+    // TODO: buffer nk/2 items to enable conv in-place
+    // TODO: test with images thinner than kernel width
+    /// 1d convolution
+    /// Not in place
+    /// Clamp-to-edge boundary condition
+    template<typename T> void conv1d(float *out,unsigned pout,T* in,unsigned pin, unsigned n, const float * const k,unsigned nk) {
+        assert(nk!=0);        
+        using idx=decltype(n);
+        idx j;
+        const idx shift=nk/2;
         // handle boundary condition out of main loop
         // clamp to boundary
-        for(;j<n;++j) {
+        for(j=0;j<shift;++j) {
             auto acc=0.0f;
-            decltype(nk) i;
-            for(i=0;(j+i)<n;++i)
-                acc+=k[i]*(float)in[(j+i)*p];
-            auto edge=(float)in[(j+i)*p];
+            idx i;
+            auto edge=float(in[0]);
+            for(i=0;(j+i)<shift;++i)
+                acc+=k[i]*edge;
+            for(;(j+i)<(n+shift) && i<nk;++i)
+                acc+=k[i]*float(in[(j+i-shift)*pin]);
+            // this kicks in for n<nk (thin images)
+            edge=float(in[(n-1)*pin]);
             for(;i<nk;++i)
                 acc+=k[i]*edge;
-            out[p*j]=acc;//*norm;
+            out[pout*j]=acc;
+        }
+
+        // main in-bounds loop
+        for(;(j+nk)<=n;++j) { // if n<nk, the look will be skipped
+            auto acc=0.0f;
+            for(idx i=0;i<nk;++i)
+                acc+=k[i]*float(in[(j+i-shift)*pin]);
+            out[pout*j]=acc;
+        }
+
+        // handle boundary condition out of main loop
+        // clamp to boundary
+        for(;j<(n+shift);++j) {
+            auto acc=0.0f;
+            idx i;
+            for(i=0;(j+i)<n;++i)
+                acc+=k[i]*float(in[(j+i-shift)*pin]);
+            auto edge=float(in[(j+i-shift-1)*pin]);
+            for(;i<nk;++i)
+                acc+=k[i]*edge;
+            out[pout*j]=acc;
         }
     }
 
+
+    /// strided converting copy
+    template<typename S, typename T> void copy1d(S *out,unsigned pout,T* in,unsigned pin,unsigned n) {
+        S* end=out+pout*n;
+        S* o;
+        T* i;
+        for(o=out,i=in;o<end;o+=pout,i+=pin)
+            *o=S(*i);
+    }
+
+
     /// Separable convolution
     template<typename T> void conv(const struct conv_context *self) {
-        T * const in=(T*)self->in;
+        T * in=(T*)self->in;
         auto * const out=self->out;
         const decltype(self->pitch) p[2]={self->pitch,1};
         const decltype(self->w) s[2]={self->h,self->w};
         auto d=0;
         for(decltype(self->w) i=0;i<s[d];++i)
             conv1d(
-                out+i*p[d],
-                in +i*p[d],
-                p[(d+1)%2],
+                out+i*p[d],p[(d+1)%2],
+                in +i*p[d],p[(d+1)%2],
                 s[(d+1)%2],
                 self->kernel[d],
                 self->nkernel[d]);
-        // FIXME: after the first dim, want to repeatedly do in-place
-        //        conv.  But I don't have the algorithm in-place at the
-        //        moment
+        // After the first dimension is done, we want
+        // to repeatedly work in-place on the output 
+        // buffer.
         d=1;
-        for(decltype(self->w) i=0;i<s[d];++i)
+        auto *tmp=(float*)malloc(sizeof(float)*s[(d+1)%2]);
+        if(!tmp) {
+            self->logger(1,__FILE__,__LINE__,__FUNCTION__,
+                         "Out of memory.  Failed to allocate %f bytes.",
+                         float(sizeof(float)*s[(d+1)%2]));
+            return;
+        }
+        for(decltype(self->w) i=0;i<s[d];++i) {
             conv1d(
-                out+i*p[d],
-                out+i*p[d],
-                p[(d+1)%2],
+                tmp,1,
+                out+i*p[d],p[(d+1)%2],
                 s[(d+1)%2],
                 self->kernel[d],
                 self->nkernel[d]);
+            copy1d(out+i*p[d],p[(d+1)%2],tmp,1,s[(d+1)%2]);
+        }
+        free(tmp);
     }
 }
 

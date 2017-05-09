@@ -77,7 +77,7 @@ static void init() {
 
     {
         const float
-            x0=-1.0f,y0=-1.0f,x1=1.0f,y1=1.0f,
+            x0=-1.0f,y0=1.0f,x1=1.0f,y1=-1.0f,
             u0=0.0f,v0=0.0f,u1=1.0f,v1=1.0f;
         struct verts verts[4]={
             {x0,y0,u0,v0},
