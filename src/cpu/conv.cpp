@@ -50,10 +50,11 @@ namespace priv {
         }
 
         // main in-bounds loop
-        for(;(j+nk)<=n;++j) { // if n<nk, the look will be skipped
+        // last j and i, want: j+i-shift=n-1 => j+(nk-1)-shift=n-1 => j=n-1-nk+1+shift=n-nk+shift => (j+nk)=(n+shift)
+        for(;(j+nk)<=(n+shift);++j) { // if n<nk, the loo will be skipped
             auto acc=0.0f;
-            for(idx i=0;i<nk;++i)
-                acc+=k[i]*float(in[j+i-shift]);
+            for(idx i=0;i<nk;++i) 
+                acc+=k[i]*float(in[j+i-shift]); 
             out[j]=acc;
         }
 
@@ -100,7 +101,8 @@ namespace priv {
         }
 
         // main in-bounds loop
-        for(;(j+nk)<=n;++j) { // if n<nk, the look will be skipped
+        // last j and i, want: j+i-shift=n-1 => j+(nk-1)-shift=n-1 => j=n-1-nk+1+shift=n-nk+shift => (j+nk)=(n+shift)
+        for(;(j+nk)<=(n+shift);++j) { // if n<nk, the loop will be skipped
             auto acc=0.0f;
             for(idx i=0;i<nk;++i)
                 acc+=k[i]*float(in[(j+i-shift)*pin]);
@@ -131,35 +133,57 @@ namespace priv {
             *o=S(*i);
     }
 
+    /// non-strided converting copy
+    template<typename S,typename T> void copy1d_unit_stride(S *out,T* in,unsigned n) {
+        S* end=out+n;
+        S* o;
+        T* i;
+        for(o=out,i=in;o<end;++o,++i)
+            *o=S(*i);
+    }
+
 
     /// Separable convolution
+    /// If nk==0 for a dimension, just copies that dimension
     template<typename T> void conv(const struct conv_context *self) {
+        using pitch_t=decltype(self->pitch);
+        using sz_t=decltype(self->w);
+
         T * in=(T*)self->in;
-        auto * const out=self->out;
-        const decltype(self->pitch) p[2]={self->pitch,1};
-        const decltype(self->w) s[2]={self->h,self->w};
+        auto * const out=self->out;        
+        const pitch_t p[2]={self->pitch,1};
+        const sz_t s[2]={self->h,self->w};
         auto d=0;
-        for(decltype(self->w) i=0;i<s[d];++i)
-            conv1d_unit_strides(
-                out+i*p[d],
-                in +i*p[d],
-                s[(d+1)%2],
-                self->kernel[d],
-                self->nkernel[d]);
+        if(self->nkernel[d]==0) {
+            // nothing to do, may need to convert to float
+            for(sz_t i=0;i<s[d];++i)
+                copy1d_unit_stride(out+i*p[d],in+i*p[d],s[(d+1)%2]);
+        } else {
+            for(sz_t i=0;i<s[d];++i)
+                conv1d_unit_strides(
+                    out+i*p[d],
+                    in +i*p[d],
+                    s[(d+1)%2],
+                    self->kernel[d],
+                    self->nkernel[d]);
+        }
         // After the first dimension is done, we want
         // to repeatedly work in-place on the output 
         // buffer.
         d=1;
         auto *tmp=(float*)self->workspace;
-        for(decltype(self->w) i=0;i<s[d];++i) {
-            conv1d(
-                tmp,1,
-                out+i*p[d],p[(d+1)%2],
-                s[(d+1)%2],
-                self->kernel[d],
-                self->nkernel[d]);
-            copy1d(out+i*p[d],p[(d+1)%2],tmp,1,s[(d+1)%2]);
-        }        
+        // if nkernel is 0, nothing to do, just skip 
+        if(self->nkernel[d]!=0) {
+            for(sz_t i=0;i<s[d];++i) {
+                conv1d(
+                    tmp,1,
+                    out+i*p[d],p[(d+1)%2],
+                    s[(d+1)%2],
+                    self->kernel[d],
+                    self->nkernel[d]);
+                copy1d(out+i*p[d],p[(d+1)%2],tmp,1,s[(d+1)%2]);
+            }
+        }
     }
 }
 

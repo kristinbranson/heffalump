@@ -40,27 +40,31 @@ static char* im() {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    const float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
+    const float k[]={1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
     const float *ks[]={k,k};
     unsigned nks[]={5,5};
     struct conv_context ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);
+    float* out=conv_alloc(&ctx,malloc);
     app_init(logger);
-    imshow_contrast(imshow_f32,0,5*5*255.0);
+    imshow_contrast(imshow_f32,0,max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     while(app_is_running()) {
         char* input=im();
+
         clock=tic();
         conv_push(&ctx,input);
         conv(&ctx);
         acc+=(float)toc(&clock);
         ++nframes;
-        imshow(imshow_f32,256,128,ctx.out);
+
+        conv_copy(&ctx,out);
+        imshow(imshow_f32,ctx.w,ctx.h,out);
     }
     conv_teardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
-    LOG("Mean convolution throughput: %f MB/s\n",1e-6*nframes*256*256/acc);
+    LOG("Mean convolution throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
     return 0;
 }
 
