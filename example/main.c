@@ -2,11 +2,13 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <SFMT.h>
+#include <math.h>
 #include <windows.h>
 #include "tictoc.h"
 #include <conv.h>
 #include "imshow.h"
 #include "app.h"
+
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -39,18 +41,68 @@ static char* im() {
     return buf;
 }
 
-int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    const float k[]={1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
-    const float *ks[]={k,k};
-    unsigned nks[]={5,5};
+static char* delta() {
+    static char *buf=0;
+    if(!buf) {
+        buf=malloc(256*256);
+        memset(buf,0,256*256);
+        buf[128*256+128]=255;
+    }    
+    return buf;
+}
+
+static float* gaussian(float *k,int n,float sigma) {
+    const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+    const float s2=sigma*sigma;
+    const float c=(n-1)/2.0f;
+    for(auto i=0;i<n;++i) {
+        float r=i-c;
+        k[i]=norm*expf(-0.5f*r*r/s2);
+    }
+    return k;
+}
+
+static float* gaussian_derivative(float *k,int n,float sigma) {
+    const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+    const float s2=sigma*sigma;
+    const float c=(n-1)/2.0f;
+    for(auto i=0;i<n;++i) {
+        float r=i-c;
+        float g=norm*expf(-0.5f*r*r/s2);
+        k[i]=-g*r/s2;
+    }
+    return k;
+}
+
+#include <float.h>
+static void autocontrast(const float *out,int n) {
+    static float mn=FLT_MAX;
+    static float mx=-FLT_MAX;
+    const float *end=out+n;
+    for(const float *c=out;c<end;++c) {
+        mn=min(mn,*c);
+        mx=max(mx,*c);
+    }
+    imshow_contrast(imshow_f32,mn,mx);    
+
+}
+
+int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
+    float buf[25*2];
+    unsigned nks[]={18,18};
+    float* ks[]={
+        gaussian_derivative(buf,nks[0],3.0f),
+        gaussian_derivative(&buf[25],nks[1],3.0f),
+    };
+    
     struct conv_context ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);
     float* out=conv_alloc(&ctx,malloc);
     app_init(logger);
-    imshow_contrast(imshow_f32,0,max(nks[0],1)*max(nks[1],1)*255.0);
+    imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     while(app_is_running()) {
-        char* input=im();
+        char* input=delta();
 
         clock=tic();
         conv_push(&ctx,input);
@@ -59,6 +111,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         ++nframes;
 
         conv_copy(&ctx,out);
+        autocontrast(out,ctx.w*ctx.h);
         imshow(imshow_f32,ctx.w,ctx.h,out);
     }
     conv_teardown(&ctx);

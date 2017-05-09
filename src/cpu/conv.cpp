@@ -40,7 +40,13 @@ namespace priv {
             auto edge=float(in[0]);
             for(i=0;(j+i)<shift;++i)
                 acc+=k[i]*edge;
-            for(;(j+i)<(n+shift)&&i<nk;++i)
+
+            // want j+i-shift=0 on entering this loop
+            // have j+i=shift => j+i-shift=0 (check)
+            //
+            // on exit, want to be done with the kernel or
+            // want j+i-shift=n-1 => (j+nk)=(n+shift) using max i = nk-1
+            for(;i<nk && (j+i)<=(n+shift);++i)
                 acc+=k[i]*float(in[j+i-shift]);
             // this kicks in for n<nk (thin images)
             edge=float(in[n-1]);
@@ -91,7 +97,7 @@ namespace priv {
             auto edge=float(in[0]);
             for(i=0;(j+i)<shift;++i)
                 acc+=k[i]*edge;
-            for(;(j+i)<(n+shift) && i<nk;++i)
+            for(;i<nk && (j+i)<=(n+shift);++i)
                 acc+=k[i]*float(in[(j+i-shift)*pin]);
             // this kicks in for n<nk (thin images)
             edge=float(in[(n-1)*pin]);

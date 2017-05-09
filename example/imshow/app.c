@@ -1,12 +1,9 @@
 #include <string.h> // memset
 #include "mingl.h"
-#include "imshow.h"
 #include <windows.h>
 #include <stdio.h>
 #include "gl/glcorearb.h" // required for some types in wglext.h
 #include "gl/wglext.h"
-
-#include <math.h>
 #include "app.h"
 
 #define containerof(P,T,M)  ((T*)(((char*)P)-offsetof(T,M)))
@@ -35,8 +32,6 @@ struct App {
 };
 
 static struct App app;
-
-
 
 const char* app_version() {
     #define STR(e) #e
@@ -207,6 +202,8 @@ void app_wait_till_close() {
     if(app.window && app.window->teardown)
         app.window->teardown();
     CloseHandle(app.thread);
+    CloseHandle(app.first_window_created);
+    CloseHandle(app.signal_create_window);
     app.logger=0; // the logger pointer is also used to flag the init'd state
 }
 
@@ -222,6 +219,8 @@ void app_teardown() {
         if(app.window->teardown) app.window->teardown();
     }
     CloseHandle(app.thread);
+    CloseHandle(app.first_window_created);
+    CloseHandle(app.signal_create_window);
     app.logger=0; // the logger pointer is also used to flag the init'd state
 }
 

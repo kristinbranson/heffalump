@@ -21,7 +21,7 @@ enum lk_scalar_type {
 };
 
 struct lk_parameters {
-    float radius,sigma;
+    float sigma_weight,sigma_derivative;
 };
 
 struct lk_context {
