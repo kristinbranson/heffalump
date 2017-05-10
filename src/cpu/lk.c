@@ -5,6 +5,7 @@
 #include <conv.h>
 
 #define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define ERR(...) self.logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
@@ -50,13 +51,16 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     return k;
 }
 
-static struct workspace* workspace_create(const struct lk_parameters* params,unsigned npx) {
-    const unsigned
-        nder=(unsigned)(6*params->sigma.derivative),
+static struct workspace* workspace_create(const struct lk_parameters* params,unsigned npx,unsigned nbytes_of_image) {
+    unsigned
+        nder=(unsigned)(8*params->sigma.derivative),
         nsmo=(unsigned)(6*params->sigma.smoothing);
+    nder=(nder/2)*2+1; // make odd
+    nsmo=(nsmo/2)*2+1; // make odd
     struct workspace* self=(struct workspace*)malloc(
         sizeof(struct workspace) +
-        sizeof(float)*(nder+nsmo+6*npx));
+        sizeof(float)*(nder+nsmo+6*npx) +
+        nbytes_of_image);
     if(!self)
         return 0;
 
@@ -77,7 +81,7 @@ static struct workspace* workspace_create(const struct lk_parameters* params,uns
         ds[i]=data+c;
         c+=npx;
     }
-    self->last=data;
+    self->last=data+c;
     return self;
 }
 
@@ -89,7 +93,7 @@ struct lk_context lk_init(
     unsigned pitch,
     const struct lk_parameters params
 ){
-    struct workspace *ws=workspace_create(&params,w*h);
+    struct workspace *ws=workspace_create(&params,w*h,bytes_per_pixel(type)*pitch*h);
     struct lk_context self={
         .logger=logger,
         .type=type,
@@ -111,8 +115,8 @@ struct lk_context lk_init(
         float *ks[]={ws->kernels.derivative,ws->kernels.derivative};
         unsigned nks0[]={ws->kernels.nder,0};
         unsigned nks1[]={0,ws->kernels.nder};
-        self.dx=conv_init(logger,conv_f32,w,h,w,ks,nks0);
-        self.dy=conv_init(logger,conv_f32,w,h,w,ks,nks1);
+        self.dx=conv_init(logger,type,w,h,w,ks,nks0);
+        self.dy=conv_init(logger,type,w,h,w,ks,nks1);
         ws->dI.x=self.dx.out;
         ws->dI.y=self.dy.out;
     }
@@ -131,6 +135,16 @@ void lk_teardown(struct lk_context *self){
 
 extern void diff(float *out,enum lk_scalar_type type,void *a,void *b,unsigned w,unsigned h,unsigned p);
 
+// normalizes input in-place to unit magnitude
+// and returns the normalizing factor.
+static float norm_ip(float *v,int npx) {
+    float *end=v+npx;
+    float mag=0.0f;
+    for(float *c=v;c<end;++c) mag=max(mag,fabs(*c));
+    for(float *c=v;c<end;++c) *c/=mag;
+    return mag;
+}
+
 void lk(struct lk_context *self, void *im){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
@@ -142,14 +156,18 @@ void lk(struct lk_context *self, void *im){
     conv(&self->dy);
     // dI/dt
     diff(ws->dI.t,self->type,im,ws->last,self->w,self->h,self->pitch);
-    // replace last image now that we're done using it
-    memcpy(ws->last,im,bytes_per_pixel(self->type)*self->pitch*self->h);
+
+    // norm
+    // This is important for keeping things numerically stable
+    float nx=norm_ip(ws->dI.x,npx);
+    float ny=norm_ip(ws->dI.y,npx);
+    float nt=norm_ip(ws->dI.t,npx);
 
     // Gaussian weighted window
     // sum(w*(dI/da)*(dI/db))
     struct job { float *a,*b,*out; } jobs[]={
         {ws->dI.x,ws->dI.x,ws->dI.xx},
-        {ws->dI.y,ws->dI.x,ws->dI.xy},
+        {ws->dI.x,ws->dI.y,ws->dI.xy},
         {ws->dI.y,ws->dI.y,ws->dI.yy},
         {ws->dI.x,ws->dI.t,ws->dI.tx},
         {ws->dI.y,ws->dI.t,ws->dI.ty},
@@ -161,12 +179,12 @@ void lk(struct lk_context *self, void *im){
               *b=jobs[i].b;
         for(;out<end;++out,++a,++b)
             *out=*a**b;
-        conv_push(&self->smooth,out);
+        conv_push(&self->smooth,jobs[i].out);
         conv(&self->smooth);
-        conv_copy(&self->smooth,out); // FIXME: avoid this copy
+        conv_copy(&self->smooth,jobs[i].out); // FIXME: avoid this copy
     }
     
-    // Solve the 2x2 linear system
+    // Solve the 2x2 linear system for the flow
     // [xx xy;yx yy]*[vx;vy] = -[xt;yt]
     {
         float *xx=ws->dI.xx,
@@ -177,18 +195,27 @@ void lk(struct lk_context *self, void *im){
              *end=xx+npx;
         struct point {float x,y;};
         struct point *v=(struct point*)self->result;
+        // Need to multiply to restore original units (from when Ix,Iy,and It were normalized)
+        // determinant mag: nx nx ny ny
+        // numerator mag: (nx nx + ny ny) nx nt - total mag: (nx nx + ny ny) nt / (nx ny ny) - nx~ny => nt/nx
+        // numerator mag: (nx nx + ny ny) ny nt - total mag: (nx nx + ny ny) nt / (nx nx ny) -
+        const float units=2*nt/(nx+ny);
         for(;xx<end;++xx,++xy,++yy,++tx,++ty,++v) {
             const float a=*xx,b=*xy,d=*yy,s=-*tx,t=-*ty;
-            const float det=a*d-b*b;
-            v->x=(a*s+b*t)/det;
-            v->y=(b*s+d*t)/det;
+            const float det=a*d-b*b; 
+            const float norm=(det>1e-5)?(units/det):0.0f;
+            v->x=norm*(a*s+b*t); 
+            v->y=norm*(b*s+d*t);             
         }
     }
+
+    // replace last image now that we're done using it
+    memcpy(ws->last,im,bytes_per_pixel(self->type)*self->pitch*self->h);
 }
 
 void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes)){
-    abort();
+    return malloc(sizeof(float)*self->w*self->h*2);
 }
 void  lk_copy(const struct lk_context *self, float *out){
-    abort();
+    memcpy(out,self->result,sizeof(float)*self->w*self->h*2);
 }

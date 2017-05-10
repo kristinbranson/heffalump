@@ -19,6 +19,8 @@ int  app_is_running();
 void app_wait_till_close();
 void app_teardown();
 
+double app_uptime_s();
+
 // private
 
 struct Window {

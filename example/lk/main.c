@@ -7,6 +7,7 @@
 #include <lk.h>
 #include "imshow.h"
 #include "app.h"
+#include <math.h>
 
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -25,7 +26,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
     OutputDebugStringA(buf2);
 }
 
-static char* im() {
+static unsigned char* im() {
     static char *buf=0;
     static sfmt_t state;
     if(!buf) {
@@ -50,6 +51,95 @@ static char* delta() {
     return buf;
 }
 
+static float* disk(double time) {
+//    static char *buf=0;
+    static float *out=0;
+    static struct conv_context ctx;
+    static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
+    static float *ks[]={k,k};
+    static unsigned nks[]={0,0};
+    if(!out) {
+        ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);        
+        out=conv_alloc(&ctx,malloc);
+    }
+
+
+    // additive noise
+    unsigned char* buf=im();
+    for(int i=0;i<256*256;++i)
+        buf[i]*=0.25;
+
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=64.0f*sin(time*6.28)+128.0f,
+              cy=64.0f*cos(time*6.28)+128.0f;
+        const float r=5.0f;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                      yy=cy-iy,
+                      r2=xx*xx+yy*yy,
+                      dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr;
+                if(dr>0)
+                    buf[iy*256+ix]=255*dr;
+            }
+        }
+    }
+
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=32.0f*sin(-2*time*6.28)+128.0f,
+              cy=32.0f*cos(-2*time*6.28)+128.0f;
+        const float r=2.0f;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                    yy=cy-iy,
+                    r2=xx*xx+yy*yy,
+                    dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr;
+                if(dr>0)
+                    buf[iy*256+ix]=255*dr;
+            }
+        }
+    }
+
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=48.0f*sin(7*time*6.28)+128.0f,
+              cy=48.0f*cos(-3*time*6.28)+128.0f;
+        const float r=10.0f;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                    yy=cy-iy,
+                    r2=xx*xx+yy*yy,
+                    dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr;
+                if(dr>0)
+                    buf[iy*256+ix]=255*dr;
+            }
+        }
+    }
+
+
+    conv_push(&ctx,buf);
+    conv(&ctx);
+    conv_copy(&ctx,out);
+
+    return out;
+}
+
 #include <float.h>
 static void autocontrast(const float *out,int n) {
     static float mn=FLT_MAX;
@@ -66,45 +156,46 @@ static void autocontrast(const float *out,int n) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {  
     struct lk_parameters params={
         .sigma={
-            .derivative=1,
-            .smoothing=4
+            .derivative=1.0, // This is something like the edge scale 
+            .smoothing=4.0   // This is the object scale
     }};
-    struct lk_context ctx=lk_init(logger,lk_u8,256,256,256,params);
+    struct lk_context ctx=lk_init(logger,lk_f32,256,256,256,params);
 
     float* out=lk_alloc(&ctx,malloc);
     app_init(logger);
-    imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
+    imshow_contrast(imshow_f32,-10,10); //max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
-    float acc=0.0f,nframes=0.0f;
-    while(app_is_running()) {
-        char* input=delta();
+    float acc=0.0f,nframes=0.0f;    
 
+    while(app_is_running()) {
+        float* input=disk(app_uptime_s()/10.0);
+        //float* input=disk(nframes/30.0f);
+#if 0
+        autocontrast(input,ctx.w*ctx.h);
+        imshow(imshow_f32,ctx.w,ctx.h,input);
+#else
         clock=tic();
         lk(&ctx,input);
         acc+=(float)toc(&clock);
-        ++nframes;
-
+        
         lk_copy(&ctx,out);
-        autocontrast(out,ctx.w*ctx.h);
-        imshow(imshow_f32,ctx.w,ctx.h,out);
+        autocontrast(out,ctx.w*ctx.h*2);
+        imshow(imshow_2f32,ctx.w,ctx.h,out);
+#endif
+
+        ++nframes;
     }
     lk_teardown(&ctx);
     LOG("nframes: %f\n",nframes);
-    LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
-    LOG("Mean convolution throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
+    LOG("Mean Lucas–Kanade time: %f us\n",1e6*acc/(float)nframes);
+    LOG("Mean Lucas–Kanade throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
     return 0;
 }
 
 /* 
  * TIMING DATA 
  * 
- * (5x5 kernel, 256x256 inputs, HAL9001)
- * - cpu Release - malloc in conv
- *   57.5 MB/s (1138 us/frame)
- * - cpu Release - no malloc in conv
- *   67.8 MB/s (966 us/frame)
- * - cpu Release - specialize for unit strides
- *   77.7 MB/s (843 us/frame)
- * 
- * 
+ * (sigmas: der 1px smooth 4px, 256x256 u8 inputs, HAL9001)
+ * - cpu Release
+ *   4.74 Mpx/s (13815 us/frame)
  */

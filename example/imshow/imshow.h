@@ -16,7 +16,9 @@
         imshow_i32,
         imshow_i64,
         imshow_f32,
-        imshow_f64
+        imshow_f64,
+
+        imshow_2f32
     };
 
     void imshow(enum imshow_scalar_type type,int w, int h,const void *data);

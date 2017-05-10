@@ -10,8 +10,8 @@ static const char FRAG[]=GLSL(
 
     void main(){
         vec4 c=texture(im,tex_);
-        c.r=(c.r-zero)/range;
-        color=vec4(c.r,c.r,c.r,1.0);
+        c=(c-zero)/range;
+        color=vec4(c.rgb,1.0);
     }
 );
 
@@ -151,20 +151,21 @@ static struct imshow_commands {
 
 static void show(enum imshow_scalar_type t,int w,int h,const void *data) {
     if(!image_) init();
-    GLint type;
+    GLint type,fmt,ifmt;
     switch(t) {
-        case imshow_i8:  type=GL_BYTE; break;
-        case imshow_u8:  type=GL_UNSIGNED_BYTE; break;
-        case imshow_i16: type=GL_SHORT; break;
-        case imshow_u16: type=GL_UNSIGNED_SHORT; break;
-        case imshow_i32: type=GL_INT; break;
-        case imshow_u32: type=GL_UNSIGNED_INT; break;
-        case imshow_f32: type=GL_FLOAT; break;
+        case imshow_i8:   ifmt=GL_R32F;  fmt=GL_RED; type=GL_BYTE; break;
+        case imshow_u8:   ifmt=GL_R32F;  fmt=GL_RED; type=GL_UNSIGNED_BYTE; break;
+        case imshow_i16:  ifmt=GL_R32F;  fmt=GL_RED; type=GL_SHORT; break;
+        case imshow_u16:  ifmt=GL_R32F;  fmt=GL_RED; type=GL_UNSIGNED_SHORT; break;
+        case imshow_i32:  ifmt=GL_R32F;  fmt=GL_RED; type=GL_INT; break;
+        case imshow_u32:  ifmt=GL_R32F;  fmt=GL_RED; type=GL_UNSIGNED_INT; break;
+        case imshow_f32:  ifmt=GL_R32F;  fmt=GL_RED; type=GL_FLOAT; break;
+        case imshow_2f32: ifmt=GL_RG32F; fmt=GL_RG;  type=GL_FLOAT; break;
         default:
             return;//ERR("Unsupported type for texture.\n");
     }
     glBindTexture(GL_TEXTURE_2D,image_->tex);
-    glTexImage2D(GL_TEXTURE_2D,0,GL_R32F,w,h,0,GL_RED,type,data);
+    glTexImage2D(GL_TEXTURE_2D,0,ifmt,w,h,0,fmt,type,data);
     glBindTexture(GL_TEXTURE_2D,0);
 
     mingl_check();

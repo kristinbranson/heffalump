@@ -28,7 +28,7 @@ struct App {
     struct Window *window; // Only manage one window
     HANDLE signal_create_window,first_window_created;
     int is_running;
-    LARGE_INTEGER frame_clock;
+    LARGE_INTEGER frame_clock,clock;
 };
 
 static struct App app;
@@ -167,9 +167,18 @@ void app_init( void(*logger)(int is_error,const char *file,int line,const char* 
         RegisterClassA(&cls);
     }
 
+    QueryPerformanceCounter(&app.clock);
+
     // spawn the event processing thread
     app.is_running=1;
     app.thread=CreateThread(0,0,(LPTHREAD_START_ROUTINE)mainloop,0,0,0);
+}
+
+double app_uptime_s() {
+    LARGE_INTEGER t,freq;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t);
+    return (t.QuadPart-app.clock.QuadPart)/(double)freq.QuadPart;
 }
 
 int  app_is_running() {

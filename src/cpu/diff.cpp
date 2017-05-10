@@ -2,14 +2,14 @@
 #include <cstdint>
 
 // Assumes output is unit stride and floating point
-// Assumes input both use the same pitch for rows
+// Assumes inputs both use the same pitch for rows
 
 namespace priv {
 
     template<typename T> void diff(float *out,T *a,T *b,unsigned w,unsigned h, unsigned p) {
         for(unsigned y=0;y<h;++y)
             for(unsigned x=0;x<w;++x)
-                out[y*w+x]=a[y*p+x]+b[y*p+x];
+                out[y*w+x]=float(a[y*p+x])-float(b[y*p+x]);
     }
 }
 
