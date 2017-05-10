@@ -4,7 +4,7 @@
 #include <SFMT.h>
 #include <math.h>
 #include <windows.h>
-#include "tictoc.h"
+#include "../tictoc.h"
 #include <conv.h>
 #include "imshow.h"
 #include "app.h"
@@ -38,16 +38,6 @@ static char* im() {
     // ~1.7 GB/s on Intel(R) Core(TM) i7-4770S CPU @ 3.10GHz
     // ~26k fps @ 256x256
     sfmt_fill_array64(&state,(uint64_t*)buf,(256*256)/sizeof(uint64_t));
-    return buf;
-}
-
-static char* delta() {
-    static char *buf=0;
-    if(!buf) {
-        buf=malloc(256*256);
-        memset(buf,0,256*256);
-        buf[128*256+128]=255;
-    }    
     return buf;
 }
 
@@ -102,7 +92,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     while(app_is_running()) {
-        char* input=delta();
+        char* input=im();
 
         clock=tic();
         conv_push(&ctx,input);

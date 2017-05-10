@@ -1,4 +1,5 @@
 #pragma 
+#include <stddef.h>
 #ifndef H_NGC_LK
 #define H_NGC_LK
 
@@ -26,12 +27,14 @@ struct lk_parameters {
     } sigma;
 };
 
+#include "conv.h"
 struct lk_context {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     enum lk_scalar_type type;
     unsigned w,h;
     int pitch;
     float *result; // device mem - output
+    struct conv_context smooth,dx,dy;
     void *workspace;
 };
 
@@ -63,25 +66,21 @@ struct lk_context lk_init(
 */
 void lk_teardown(struct lk_context *self);
 
-/** Adds an image to the time stream.
-    We only really consider two timepoints, so in essence this does a buffer swap.
-    To start things off, it's necessary to push twice.
-
-    Some computation might be performed by this step.
-*/
-void lk_push(struct lk_context *self, void *im);
-
-/** Performs Lukas-Kanade using the pushed images.
+/** Performs Lukas-Kanade.
+ *
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `lk_alloc` and `lk_copy` functions.
+
+    The input image is stored in the context as the last timepoint.
+    For the first image, the last timepoint is a blank image.
 */
-void lk(const struct lk_context *self);
+void lk(struct lk_context *self,void *im);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 
     the lk_copy() function.
 */
-void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes));
+void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes));
 
 /** Copy the result buffer to out.
 */

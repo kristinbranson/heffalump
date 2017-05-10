@@ -95,4 +95,12 @@ void  conv_copy(const struct conv_context *self, float *out);
 
 - Kernel is added on init of context, but it's more natural to let that 
   vary without needing to reinit a context.
+
+API
+ - combine conv and conv_push
+   unless we're changing kernels all the time?
+ - allow setting of output pointer on init
+   API should allow avoiding a copy if possible.
+   Right now, if trying do do an in-place, there's a forced copy on the cpu impl
+
 */
