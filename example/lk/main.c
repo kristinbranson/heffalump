@@ -67,7 +67,7 @@ static float* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.25;
+        buf[i]*=0.10;
 
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -196,6 +196,6 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
  * TIMING DATA 
  * 
  * (sigmas: der 1px smooth 4px, 256x256 u8 inputs, HAL9001)
- * - cpu Release
+ * - cpu Release (b275a59)
  *   4.74 Mpx/s (13815 us/frame)
  */

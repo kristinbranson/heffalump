@@ -199,13 +199,18 @@ void lk(struct lk_context *self, void *im){
         // determinant mag: nx nx ny ny
         // numerator mag: (nx nx + ny ny) nx nt - total mag: (nx nx + ny ny) nt / (nx ny ny) - nx~ny => nt/nx
         // numerator mag: (nx nx + ny ny) ny nt - total mag: (nx nx + ny ny) nt / (nx nx ny) -
-        const float units=2*nt/(nx+ny);
+        const float xunits=(nx*nx+ny*ny)*nt/(nx*ny*ny);
+        const float yunits=(nx*nx+ny*ny)*nt/(nx*nx*ny);
         for(;xx<end;++xx,++xy,++yy,++tx,++ty,++v) {
-            const float a=*xx,b=*xy,d=*yy,s=-*tx,t=-*ty;
-            const float det=a*d-b*b; 
-            const float norm=(det>1e-5)?(units/det):0.0f;
-            v->x=norm*(a*s+b*t); 
-            v->y=norm*(b*s+d*t);             
+            const float a=*xx,b=*xy,d=*yy;
+            const float det=a*d-b*b;
+            if(det>1e-5) {
+                const float s=-*tx,t=-*ty;
+                v->x=(xunits/det)*(a*s+b*t);
+                v->y=(yunits/det)*(b*s+d*t);
+            } else {
+                v->x=v->y=0.0f;
+            }
         }
     }
 
