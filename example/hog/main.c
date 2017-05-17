@@ -64,7 +64,7 @@ static void* disk(double time) {
     static struct conv_context ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
-    static unsigned nks[]={0,0};
+    static unsigned nks[]={3,3};
     if(!out) {
         ctx=conv_init(logger,256,256,256,ks,nks);        
         out=conv_alloc(&ctx,malloc);
@@ -143,8 +143,7 @@ static void* disk(double time) {
     memcpy(out,buf,256*256); // make a copy so we don't get flashing (imshow input isn't buffered)
     return out; // returns u8 image
 #else
-    conv_push(&ctx,buf);
-    conv(&ctx);
+    conv(&ctx,imshow_u8,buf);
     conv_copy(&ctx,out);
 
     return out; // returns f32 image
@@ -192,8 +191,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         /* TODO: vis? */
         
         struct workspace* ws=(struct workspace*)ctx.workspace;
-        autocontrast(ws->M,256*256);
-        imshow(imshow_f32,256,256,ws->M);
+        autocontrast(ws->O,256*256);
+        imshow(imshow_f32,256,256,ws->O);
 
         ++nframes;
     }

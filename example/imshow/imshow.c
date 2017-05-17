@@ -18,7 +18,6 @@ static const char FRAG[]=GLSL(
 static const char VERT[]=GLSL(
     layout(location=0) in vec2 vert;
     layout(location=1) in vec2 tex;
-    uniform vec2 size;
     out vec2 tex_;
 
     void main(){
@@ -29,6 +28,10 @@ static const char VERT[]=GLSL(
 
 struct verts{ float x,y,u,v; };
 
+/** 
+    Context for image display.
+    Will use a singleton pattern to manage this.
+*/
 static struct image {
     struct Window window;
     unsigned tex,program,vbo,vao;
@@ -123,7 +126,7 @@ static void draw() {
 }
 
 static void resize(int w,int h) {
-    if(!image_) init();   
+    if(!image_) init();
     glViewport(0,0,w,h);
 }
 
@@ -184,7 +187,7 @@ static void resolve_updates() {
     // between when flags are read and when they are rezerod.  That new 
     // command will be ignored.
     unsigned flags=command.flags;
-    command.flags=0;                
+    command.flags=0;
     if((flags & CMD_SHOW)==CMD_SHOW) {
         show(command.show.t,command.show.w,command.show.h,command.show.data);
     }
