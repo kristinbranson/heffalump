@@ -8,6 +8,7 @@ set(tgt hog_cpu)
 add_library(${tgt} STATIC
     conv.h cpu/conv.cpp
     lk.h   cpu/lk.c cpu/diff.cpp
+    hog.h  cpu/hog.c
 )
 target_link_libraries(${tgt} gradientHist)
 target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})

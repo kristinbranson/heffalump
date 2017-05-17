@@ -21,12 +21,10 @@ enum conv_scalar_type {
 
 struct conv_context {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
-    enum conv_scalar_type type;
     unsigned w,h;
     int pitch;
-    void  *in;        // device mem
     float *out;       // device mem
-    const float *kernel[2];  // device mem
+    float *kernel[2];  // device mem
     unsigned nkernel[2];
     void *workspace;
 };
@@ -48,11 +46,10 @@ struct conv_context {
 */
 struct conv_context conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum conv_scalar_type type,
     unsigned w,
     unsigned h,
     int  pitch,
-    const float    *kernel[2],
+    const float    *kernel[2], // These will be copied in to the context
     const unsigned nkernel[2]
 );
 
@@ -60,19 +57,11 @@ struct conv_context conv_init(
 */
 void conv_teardown(struct conv_context *self);
 
-/** Adds an image to the time stream.
-    We only really consider two timepoints, so in essence this does a buffer swap.
-    To start things off, it's necessary to push twice.
-
-    Some computation might be performed by this step, and maybe a memory transfer.
-*/
-void conv_push(struct conv_context *self, void *im);
-
-/** Performs Lukas-Kanade using the pushed images.
+/** Performs convolution
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `conv_alloc` and `conv_copy` functions.
 */
-void conv(struct conv_context *self);
+void conv(struct conv_context *self,enum conv_scalar_type type,void *im);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 

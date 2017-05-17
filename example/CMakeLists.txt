@@ -18,3 +18,8 @@ set(tgt lk)
 add_executable(${tgt} WIN32 lk/main.c tictoc.c tictoc.h)
 target_link_libraries(${tgt} hog_cpu sfmt imshow)
 set_target_properties(${tgt} PROPERTIES FOLDER examples)
+
+set(tgt hog)
+add_executable(${tgt} WIN32 hog/main.c tictoc.c tictoc.h)
+target_link_libraries(${tgt} hog_cpu sfmt imshow)
+set_target_properties(${tgt} PROPERTIES FOLDER examples)

@@ -59,7 +59,7 @@ static float* disk(double time) {
     static float *ks[]={k,k};
     static unsigned nks[]={0,0};
     if(!out) {
-        ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);        
+        ctx=conv_init(logger,256,256,256,ks,nks);        
         out=conv_alloc(&ctx,malloc);
     }
 
@@ -133,8 +133,7 @@ static float* disk(double time) {
     }
 
 
-    conv_push(&ctx,buf);
-    conv(&ctx);
+    conv(&ctx,conv_u8,buf);
     conv_copy(&ctx,out);
 
     return out;
@@ -187,8 +186,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     }
     lk_teardown(&ctx);
     LOG("nframes: %f\n",nframes);
-    LOG("Mean Lucas–Kanade time: %f us\n",1e6*acc/(float)nframes);
-    LOG("Mean Lucas–Kanade throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
+    LOG("Mean Lucas-Kanade time: %f us\n",1e6*acc/(float)nframes);
+    LOG("Mean Lucas-Kanade throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
     return 0;
 }
 

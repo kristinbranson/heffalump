@@ -109,14 +109,14 @@ struct lk_context lk_init(
     {
         float *ks[]={ws->kernels.smoothing,ws->kernels.smoothing};
         unsigned nks[]={ws->kernels.nsmooth,ws->kernels.nsmooth};
-        self.smooth=conv_init(logger,conv_f32,w,h,w,ks,nks);
+        self.smooth=conv_init(logger,w,h,w,ks,nks);
     }
     {
         float *ks[]={ws->kernels.derivative,ws->kernels.derivative};
         unsigned nks0[]={ws->kernels.nder,0};
         unsigned nks1[]={0,ws->kernels.nder};
-        self.dx=conv_init(logger,type,w,h,w,ks,nks0);
-        self.dy=conv_init(logger,type,w,h,w,ks,nks1);
+        self.dx=conv_init(logger,w,h,w,ks,nks0);
+        self.dy=conv_init(logger,w,h,w,ks,nks1);
         ws->dI.x=self.dx.out;
         ws->dI.y=self.dy.out;
     }
@@ -149,11 +149,9 @@ void lk(struct lk_context *self, void *im){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
     // dI/dx
-    conv_push(&self->dx,im);
-    conv(&self->dx);
+    conv(&self->dx,self->type,im);
     // dI/dy
-    conv_push(&self->dy,im);
-    conv(&self->dy);
+    conv(&self->dy,self->type,im);
     // dI/dt
     diff(ws->dI.t,self->type,im,ws->last,self->w,self->h,self->pitch);
 
@@ -179,8 +177,7 @@ void lk(struct lk_context *self, void *im){
               *b=jobs[i].b;
         for(;out<end;++out,++a,++b)
             *out=*a**b;
-        conv_push(&self->smooth,jobs[i].out);
-        conv(&self->smooth);
+        conv(&self->smooth,conv_f32,jobs[i].out);
         conv_copy(&self->smooth,jobs[i].out); // FIXME: avoid this copy
     }
     

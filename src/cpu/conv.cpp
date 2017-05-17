@@ -4,6 +4,11 @@
 #include <cstdint>
 #include <cassert>
 
+//#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+//#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+
 using namespace std;
 
 // aliasing the standard scalar types simplifies
@@ -151,11 +156,10 @@ namespace priv {
 
     /// Separable convolution
     /// If nk==0 for a dimension, just copies that dimension
-    template<typename T> void conv(const struct conv_context *self) {
+    template<typename T> void conv(const struct conv_context *self, T* in) {
         using pitch_t=decltype(self->pitch);
         using sz_t=decltype(self->w);
 
-        T * in=(T*)self->in;
         auto * const out=self->out;        
         const pitch_t p[2]={self->pitch,1};
         const sz_t s[2]={self->h,self->w};
@@ -193,11 +197,18 @@ namespace priv {
     }
 }
 
+static void* logged_alloc(size_t nbytes,void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {
+    void *out=malloc(nbytes);
+    if(!out)
+        ERR(logger,"Out of memory.  Failed to allocate %f bytes.",nbytes);
+    return out;
+}
+
 struct conv_context conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum conv_scalar_type type,
     unsigned w,
     unsigned h,
+
     int  pitch,
     const float    *kernel[2],
     const unsigned nkernel[2]
@@ -206,43 +217,32 @@ struct conv_context conv_init(
     self.logger=logger;
     self.w=w;
     self.h=h;
-    self.type=type;
     self.pitch=pitch;
-    self.in=0;
-    self.kernel[0]=kernel[0];    // FIXME: ownership
-    self.kernel[1]=kernel[1];
     self.nkernel[0]=nkernel[0];
     self.nkernel[1]=nkernel[1];
-    self.out=(float*)malloc(pitch*h*sizeof(float));
-    if(!self.out) {
-        self.logger(1,__FILE__,__LINE__,__FUNCTION__,
-                    "Out of memory.  Failed to allocate %f bytes.",
-                    float(sizeof(float)*pitch*h));
-        goto Error;
-    }
-    self.workspace=malloc(sizeof(float)*w);
-    if(!self.workspace) {
-        self.logger(1,__FILE__,__LINE__,__FUNCTION__,
-                     "Out of memory.  Failed to allocate %f bytes.",
-                     float(sizeof(float)*w));
-        goto Error;
-    }
+#define ALLOC(T,n) ((T*)logged_alloc(sizeof(T)*(n),logger))
+    // allocating kernels this way handles having
+    // nkernel[0]==0 or  nkernel[1]==0
+    self.kernel[0]=ALLOC(float,nkernel[0]+nkernel[1]);
+    self.kernel[1]=self.kernel[0]+nkernel[0];
+    self.out=ALLOC(float,pitch*h);
+    self.workspace=ALLOC(float,w);
+#undef ALLOC
+    if(nkernel[0]) memcpy(self.kernel[0],kernel[0],nkernel[0]*sizeof(float));
+    if(nkernel[1]) memcpy(self.kernel[1],kernel[1],nkernel[1]*sizeof(float));
 Error:
     return self;
 }
 
 void conv_teardown(struct conv_context *self) { 
+    free((void*)self->kernel[0]);
     free(self->workspace);
     free(self->out);
 }
 
-void conv_push(struct conv_context *self, void *im) {
-    self->in=im; // FIXME: ownership!
-}
-
-void conv(struct conv_context *self) {
-    switch(self->type) {
-        #define CASE(T) case conv_##T: priv::conv<T>(self); break
+void conv(struct conv_context *self,enum conv_scalar_type type, void *im) {
+    switch(type) {
+        #define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im); break
         CASE(u8);
         CASE(u16);
         CASE(u32);

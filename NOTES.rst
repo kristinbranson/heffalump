@@ -26,5 +26,5 @@ Questions
 
 How to generate test data?
 
-Understand the normalization at the end of gradientHist. 
+Understand the 7/8 normalization at the end of gradientHist in Piotr's code.
 

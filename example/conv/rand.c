@@ -85,7 +85,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         gaussian_derivative(&buf[25],nks[1],3.0f),
     };
     
-    struct conv_context ctx=conv_init(logger,conv_u8,256,256,256,ks,nks);
+    struct conv_context ctx=conv_init(logger,256,256,256,ks,nks);
     float* out=conv_alloc(&ctx,malloc);
     app_init(logger);
     imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
@@ -95,8 +95,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         char* input=im();
 
         clock=tic();
-        conv_push(&ctx,input);
-        conv(&ctx);
+        conv(&ctx,conv_u8,input);
         acc+=(float)toc(&clock);
         ++nframes;
 
