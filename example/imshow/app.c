@@ -20,6 +20,13 @@ typedef void(*logger_t)(int is_error,const char *file,int line,const char* funct
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define HINST ((HINSTANCE)&__ImageBase)
 
+struct Window {
+    HWND hwnd;
+    void(*draw)();
+    void(*resize)(int w,int h);
+    void(*teardown)();           // Only called after event thread has exited
+};
+
 struct App {
     logger_t logger;
     void* (*alloc)(size_t nbytes);
@@ -233,4 +240,60 @@ void app_teardown() {
     app.logger=0; // the logger pointer is also used to flag the init'd state
 }
 
+//
+// Window interface
+//
 
+
+// private
+
+void app_create_window(struct Window* window);
+void app_wait_for_window_creation();
+
+//
+// layered window
+//
+
+//
+//struct Layer {
+//    void(*draw)();
+//    void(*resize)(int w,int h);
+//    struct Layer *next;
+//};
+
+struct LayeredWindow {
+    struct Window window;
+    struct Layer *layers;
+};
+
+static struct LayeredWindow LAYERED_WINDOW;
+
+static void lw_draw() {
+    for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
+        c->draw();
+    }
+}
+
+static void lw_resize(int w,int h) {
+    for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
+        c->resize(w,h);
+    }
+    glViewport(0,0,w,h);
+
+}
+
+static void lw_teardown() {
+    memset(&LAYERED_WINDOW,0,sizeof(LAYERED_WINDOW));
+}
+
+void window_add_layer(struct Layer* layer) {
+    if(!LAYERED_WINDOW.window.draw) {
+        LAYERED_WINDOW.window.draw=lw_draw;
+        LAYERED_WINDOW.window.resize=lw_resize;
+        LAYERED_WINDOW.window.teardown=lw_teardown;
+        app_create_window(&LAYERED_WINDOW.window);
+    }
+    layer->next=LAYERED_WINDOW.layers;
+    layer->added=1;
+    LAYERED_WINDOW.layers=layer;    
+}

@@ -20,6 +20,6 @@ target_link_libraries(${tgt} hog_cpu sfmt imshow)
 set_target_properties(${tgt} PROPERTIES FOLDER examples)
 
 set(tgt hog)
-add_executable(${tgt} WIN32 hog/main.c tictoc.c tictoc.h)
+add_executable(${tgt} WIN32 hog/main.c tictoc.c tictoc.h hog/hogshow.c)
 target_link_libraries(${tgt} hog_cpu sfmt imshow)
 set_target_properties(${tgt} PROPERTIES FOLDER examples)

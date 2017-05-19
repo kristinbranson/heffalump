@@ -33,7 +33,7 @@ struct verts{ float x,y,u,v; };
     Will use a singleton pattern to manage this.
 */
 static struct image {
-    struct Window window;
+    struct Layer layer;
     unsigned tex,program,vbo,vao;
     struct ids{
         int zero,range;
@@ -200,15 +200,14 @@ static void resolve_updates() {
 }
 
 void imshow(enum imshow_scalar_type t,int w,int h,const void *data) {
-    if(app_is_running() && !IMAGE.window.draw) {
+    if(app_is_running() && !IMAGE.layer.added) {
         // Fill in the required callbacks:
         // This has to happen outside of the init() function
         // because this interface needs to be defined before
         // the app actually creates the window.
-        IMAGE.window.draw=draw;
-        IMAGE.window.resize=resize;
-        IMAGE.window.teardown=teardown;
-        app_create_window(&IMAGE.window);
+        IMAGE.layer.draw=draw;
+        IMAGE.layer.resize=resize;
+        window_add_layer(&IMAGE.layer);
     }
 
     command.flags|=CMD_SHOW;

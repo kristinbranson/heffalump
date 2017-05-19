@@ -1,8 +1,6 @@
 #ifndef H_NGC_MINGLMEX_APP
 #define H_NGC_MINGLMEX_APP
 
-#include <Windows.h>
-
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -21,16 +19,19 @@ void app_teardown();
 
 double app_uptime_s();
 
-// private
 
-struct Window {
-    HWND hwnd;
-    void (*draw)();
-    void (*resize)(int w,int h);
-    void (*teardown)();           // Only called after event thread has exited
+
+
+// layered window
+
+struct Layer {
+    void(*draw)();
+    void(*resize)(int w,int h);
+    struct Layer *next;
+    int added;
 };
-void app_create_window(struct Window* window);
-void app_wait_for_window_creation();
+
+void window_add_layer(struct Layer* layer);
 
 #ifdef  __cplusplus
 }

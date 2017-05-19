@@ -10,6 +10,9 @@
 #include <math.h>
 #include "conv.h"
 
+void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);
+void hogshow_set_attr(float scale,float cellw,float cellh);
+
 // this gives me a hacky way of getting at M and O data
 struct workspace {
     struct conv_context dx,dy;
@@ -163,11 +166,16 @@ static void autocontrast(const float *out,int n) {
 
 }
 
+//void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);
+//void hogshow_set_attr(float scale,float cellw,float cellh);
+
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hog_parameters params={.cell={8,8},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
+
+    hogshow_set_attr(8,8,8);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
@@ -193,6 +201,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         struct workspace* ws=(struct workspace*)ctx.workspace;
         autocontrast(ws->O,256*256);
         imshow(imshow_f32,256,256,ws->O);
+        hogshow(0,0,8,256/8,256/8,out);
 
         ++nframes;
     }
