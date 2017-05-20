@@ -8,7 +8,8 @@ static const char FRAG[]=GLSL(
     uniform vec4 color;
 
     void main() {
-        color=c;
+        //c=color;
+        c=vec4(1,1,1,1);
     }
 );
 
@@ -17,7 +18,7 @@ static const char VERT[]=GLSL(
     uniform vec2 size;
 
     void main(){
-        gl_Position=vec4(vert,0,1);
+        gl_Position=vec4(2*vert/size-1,0,1);
     }
 );
 
@@ -135,7 +136,9 @@ static void show() {
     if(!context_) init();
     struct context *self=context_;
     // Upload: computed verts
+    glBindBuffer(GL_ARRAY_BUFFER,self->vbo);
     glBufferData(GL_ARRAY_BUFFER,self->verts.n,self->verts.data,GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER,0);
 }
 
 static struct commands {
@@ -172,15 +175,16 @@ static void resolve_updates() {
 static void draw() {
     if(!context_) init();
     resolve_updates();
+    mingl_check();
 
     glUseProgram(CTX.program);
     glBindBuffer(GL_ARRAY_BUFFER,CTX.vbo);
     glBindVertexArray(CTX.vao);
 
 
-    glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
     glDrawArrays(GL_TRIANGLE_FAN,0,CTX.verts.n);
-    glPolygonMode(GL_FRONT,GL_FILL); // restore default
+    //glPolygonMode(GL_FRONT,GL_FILL); // restore default
 
     
     glBindVertexArray(0);
@@ -193,8 +197,6 @@ static void resize(int w,int h) {
     glViewport(0,0,w,h);
     glUniform2f(CTX.id.size,(float)w,(float)h);
 }
-
-
 
 // Declarations for interface
 void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);

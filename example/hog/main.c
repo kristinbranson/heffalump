@@ -200,7 +200,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         
         struct workspace* ws=(struct workspace*)ctx.workspace;
         autocontrast(ws->O,256*256);
-        imshow(imshow_f32,256,256,ws->O);
+        imshow(imshow_f32,256,256,ws->M);
         hogshow(0,0,8,256/8,256/8,out);
 
         ++nframes;

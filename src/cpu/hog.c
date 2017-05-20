@@ -103,6 +103,7 @@ void hog(struct hog_context *self,const struct hog_image image) {
         ERR("gradHist only allows for square cells");
         goto Error;
     }
+    memset(ws->features,0,features_nbytes(self));
     gradHist(ws->M,ws->O,ws->features,self->w,self->h,
         self->params.cell.w,self->params.nbins,use_soft_bin,use2pi);
 Error:;
