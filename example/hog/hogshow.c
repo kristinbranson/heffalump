@@ -18,7 +18,7 @@ static const char VERT[]=GLSL(
     uniform vec2 size;
 
     void main(){
-        gl_Position=vec4(2*vert/size-1,0,1);
+        gl_Position=vec4(2*vert/size,0,1);
     }
 );
 
@@ -114,20 +114,24 @@ static void compute_verts(float x0,float y0, int nbins,int ncellw,int ncellh, co
     const float dth=6.2831853071f/(float)nbins;
     int ivert=0;
     const int nverts_per_cell=2*nbins+1;
-    for(int icell=0;icell<ncell;++icell) {
-        struct vert* vs=self->verts.data+icell*nverts_per_cell;
-        // center vert for cell
-        vs[0].x=x0+self->attr.cellw;
-        vs[0].y=y0+self->attr.cellh;
-        // outer verts for cell
-        int ibin;
-        for(ibin=0;ibin<nbins;++ibin) {
-            const float th0=dth*ibin,th1=dth*(ibin+1);
-            const float radius=self->attr.scale*hogdata[ibin+icell*nbins];
-            vs[2*ibin+1].x=radius*cosf(th0);
-            vs[2*ibin+1].y=radius*sinf(th0);
-            vs[2*ibin+2].x=radius*cosf(th1);
-            vs[2*ibin+2].y=radius*sinf(th1);
+    int icell=0;
+    for(int ycell=0;ycell<ncellh;++ycell) {
+        for(int xcell=0;xcell<ncellw;++xcell,++icell) {
+            struct vert* vs=self->verts.data+icell*nverts_per_cell;
+            // center vert for cell
+            vs[0].x=x0+self->attr.cellw*xcell;
+            vs[0].y=y0+self->attr.cellh*ycell;
+            // outer verts for cell
+            int ibin;
+            for(ibin=0;ibin<nbins;++ibin) {
+                const float th0=dth*ibin,th1=dth*(ibin+1);
+                float radius=self->attr.scale*hogdata[ibin+icell*nbins];
+                radius=max(radius,5);
+                vs[2*ibin+1].x=vs[0].x+radius*cosf(th0);
+                vs[2*ibin+1].y=vs[0].y+radius*sinf(th0);
+                vs[2*ibin+2].x=vs[0].x+radius*cosf(th1);
+                vs[2*ibin+2].y=vs[0].y+radius*sinf(th1);
+            }
         }
     }
 }
@@ -136,9 +140,13 @@ static void show() {
     if(!context_) init();
     struct context *self=context_;
     // Upload: computed verts
+    mingl_check();
     glBindBuffer(GL_ARRAY_BUFFER,self->vbo);
+    mingl_check();
     glBufferData(GL_ARRAY_BUFFER,self->verts.n,self->verts.data,GL_DYNAMIC_DRAW);
+    mingl_check();
     glBindBuffer(GL_ARRAY_BUFFER,0);
+    mingl_check();
 }
 
 static struct commands {
@@ -164,6 +172,7 @@ static void resolve_updates() {
     // command will be ignored.
     unsigned flags=command.flags;
     command.flags=0;
+    mingl_check();
     if((flags & CMD_SHOW)==CMD_SHOW) {
 #define C(e) command.show.e
         show();
@@ -174,6 +183,7 @@ static void resolve_updates() {
 
 static void draw() {
     if(!context_) init();
+    mingl_check();
     resolve_updates();
     mingl_check();
 
@@ -194,8 +204,9 @@ static void draw() {
 
 static void resize(int w,int h) {
     if(!context_) init();
-    glViewport(0,0,w,h);
+    mingl_check();
     glUniform2f(CTX.id.size,(float)w,(float)h);
+    mingl_check();
 }
 
 // Declarations for interface

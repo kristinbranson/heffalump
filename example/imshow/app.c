@@ -278,8 +278,9 @@ static void lw_resize(int w,int h) {
     for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
         c->resize(w,h);
     }
+    mingl_check();
     glViewport(0,0,w,h);
-
+    mingl_check();
 }
 
 static void lw_teardown() {
