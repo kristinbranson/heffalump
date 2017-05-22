@@ -46,7 +46,7 @@ static void* load(const char* function) {
 
 void mingl_init(void(*log)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {
     logger=log;
-    char *glversion=glGetString(GL_VERSION);
+    const char *glversion=glGetString(GL_VERSION);
     LOG("OpenGL: %s\n",glversion?glversion:"ERROR retrieving OpenGL version string");
 
 #define GETPROC(T,f) ERR(f=(T)load(#f))

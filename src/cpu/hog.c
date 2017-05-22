@@ -118,3 +118,22 @@ void hog_features_copy(const struct hog_context *self, void *buf) {
     struct workspace *ws=(struct workspace*)self->workspace;    
     memcpy(buf,ws->features,features_nbytes(self));
 }
+
+
+void hog_features_strides(const struct hog_context *self,struct hog_feature_dims *strides) {
+    struct hog_feature_dims shape;
+    hog_features_shape(self,&shape);
+    *strides=(struct hog_feature_dims) {
+        .x=1,
+        .y=shape.x,
+        .bin=shape.x*shape.y
+    };
+}
+
+void hog_features_shape(const struct hog_context *self,struct hog_feature_dims *shape) {
+    *shape=(struct hog_feature_dims) {
+        .x=self->w/self->params.cell.w,
+        .y=self->h/self->params.cell.h,
+        .bin=self->params.nbins
+    };
+}

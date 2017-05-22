@@ -24,8 +24,8 @@ using i64= int64_t;
 using f32= float;
 using f64= double;
 
-namespace priv {
 
+namespace priv {
 
     // TODO: unit vs non-unit strides
     // TODO: test with images thinner than kernel width
@@ -134,7 +134,6 @@ namespace priv {
         }
     }
 
-
     /// strided converting copy
     template<typename S, typename T> void copy1d(S *out,unsigned pout,T* in,unsigned pin,unsigned n) {
         S* end=out+pout*n;
@@ -160,11 +159,14 @@ namespace priv {
         using pitch_t=decltype(self->pitch);
         using sz_t=decltype(self->w);
 
+        struct workspace *ws=static_cast<struct workspace *>(self->workspace);
+
+
         auto * const out=self->out;        
         const pitch_t p[2]={self->pitch,1};
         const sz_t s[2]={self->h,self->w};
         auto d=0;
-        if(self->nkernel[d]==0) {
+        if(ws->nkernel[d]==0) {
             // nothing to do, may need to convert to float
             for(sz_t i=0;i<s[d];++i)
                 copy1d_unit_stride(out+i*p[d],in+i*p[d],s[(d+1)%2]);
@@ -174,41 +176,55 @@ namespace priv {
                     out+i*p[d],
                     in +i*p[d],
                     s[(d+1)%2],
-                    self->kernel[d],
-                    self->nkernel[d]);
+                    ws->kernel[d],
+                    ws->nkernel[d]);
         }
         // After the first dimension is done, we want
         // to repeatedly work in-place on the output 
         // buffer.
         d=1;
-        auto *tmp=(float*)self->workspace;
+        auto *tmp=ws->scratch;
         // if nkernel is 0, nothing to do, just skip 
-        if(self->nkernel[d]!=0) {
+        if(ws->nkernel[d]!=0) {
             for(sz_t i=0;i<s[d];++i) {
                 conv1d(
                     tmp,1,
                     out+i*p[d],p[(d+1)%2],
                     s[(d+1)%2],
-                    self->kernel[d],
-                    self->nkernel[d]);
+                    ws->kernel[d],
+                    ws->nkernel[d]);
                 copy1d(out+i*p[d],p[(d+1)%2],tmp,1,s[(d+1)%2]);
             }
         }
     }
-}
 
-static void* logged_alloc(size_t nbytes,void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {
-    void *out=malloc(nbytes);
-    if(!out)
-        ERR(logger,"Out of memory.  Failed to allocate %f bytes.",nbytes);
-    return out;
+    struct workspace {
+        workspace(const float **ks, const unsigned *nks,unsigned nscratch) {
+            scratch=new float[nscratch];
+            // allocating kernels this way handles having
+            // nkernel[0]==0 or  nkernel[1]==0
+            kernel[0]=new float[nks[0]+nks[1]];
+            kernel[1]=kernel[0]+nks[0];
+            nkernel[0]=nks[0];
+            nkernel[1]=nks[1];
+            if(nkernel[0]) memcpy(kernel[0],ks[0],nks[0]*sizeof(float));
+            if(nkernel[1]) memcpy(kernel[1],ks[1],nks[1]*sizeof(float));
+        }
+        ~workspace() {
+            delete [] scratch;
+            delete [] kernel[0];
+        }
+    
+        float *scratch;
+        float *kernel[2];
+        unsigned nkernel[2];
+    };
 }
 
 struct conv_context conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
-
     int  pitch,
     const float    *kernel[2],
     const unsigned nkernel[2]
@@ -218,29 +234,21 @@ struct conv_context conv_init(
     self.w=w;
     self.h=h;
     self.pitch=pitch;
-    self.nkernel[0]=nkernel[0];
-    self.nkernel[1]=nkernel[1];
-#define ALLOC(T,n) ((T*)logged_alloc(sizeof(T)*(n),logger))
-    // allocating kernels this way handles having
-    // nkernel[0]==0 or  nkernel[1]==0
-    self.kernel[0]=ALLOC(float,nkernel[0]+nkernel[1]);
-    self.kernel[1]=self.kernel[0]+nkernel[0];
-    self.out=ALLOC(float,pitch*h);
-    self.workspace=ALLOC(float,w);
-#undef ALLOC
-    if(nkernel[0]) memcpy(self.kernel[0],kernel[0],nkernel[0]*sizeof(float));
-    if(nkernel[1]) memcpy(self.kernel[1],kernel[1],nkernel[1]*sizeof(float));
-Error:
+    try {
+        self.out=new float[w*h];
+        self.workspace=new priv::workspace(kernel,nkernel,w);
+    } catch(...) {
+        ERR(logger,"Problem allocating working storage.");
+    }
     return self;
 }
 
-void conv_teardown(struct conv_context *self) { 
-    free((void*)self->kernel[0]);
-    free(self->workspace);
-    free(self->out);
+void conv_teardown(struct conv_context *self) {     
+    delete [] self->out;
+    delete self->workspace;
 }
 
-void conv(struct conv_context *self,enum conv_scalar_type type, void *im) {
+void conv(struct conv_context *self,enum conv_scalar_type type, const void *im) {
     switch(type) {
         #define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im); break
         CASE(u8);

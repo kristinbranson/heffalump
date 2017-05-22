@@ -145,7 +145,7 @@ static float norm_ip(float *v,int npx) {
     return mag;
 }
 
-void lk(struct lk_context *self, void *im){
+void lk(struct lk_context *self, const void *im){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
     // dI/dx

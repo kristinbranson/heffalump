@@ -4,20 +4,12 @@
 #include <SFMT.h>
 #include <windows.h>
 #include "../tictoc.h"
-#include <hog.h>
 #include "imshow.h"
 #include "app.h"
 #include <math.h>
 #include "conv.h"
 #include "hogshow.h"
-
-
-// this gives me a hacky way of getting at M and O data
-struct workspace {
-    struct conv_context dx,dy;
-    float *M,*O;
-};
-
+#include "hof.h"
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -61,7 +53,6 @@ static char* delta() {
 }
 
 static void* disk(double time) {
-//    static char *buf=0;
     static float *out=0;
     static struct conv_context ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
@@ -71,7 +62,6 @@ static void* disk(double time) {
         ctx=conv_init(logger,256,256,256,ks,nks);        
         out=conv_alloc(&ctx,malloc);
     }
-
 
     // additive noise
     unsigned char* buf=im();
@@ -168,15 +158,15 @@ static void autocontrast(const float *out,int n) {
     imshow_contrast(imshow_f32,mn,mx);
 
 }
-
-//void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);
-//void hogshow_set_attr(float scale,float cellw,float cellh);
-
+                                                                  
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={16,16},.nbins=8};
-    struct hog_context ctx=
-        hog_init(logger,params,256,256);
-    float* out=hog_features_alloc(&ctx,malloc);
+    struct hof_parameters params={
+        .lk={.sigma={.derivative=1,.smoothing=3}},
+        .input={.type=hof_u8,.w=256,.h=256,.pitch=256}, // need this to reserve memory for 1 time point
+        .cell={16,16},.nbins=8};
+    struct hof_context ctx=
+        hof_init(logger,params,256,256);
+    float* out=hof_features_alloc(&ctx,malloc);
 
     hogshow_set_attr(1,params.cell.w,params.cell.h);
 
@@ -189,36 +179,31 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         void* input=disk(app_uptime_s()/10.0);
 
         clock=tic();
-        struct hog_image him= {
-            .type=hog_u8,
-                .w=256,.h=256,.pitch=256,
-                .buf=input
-        };
-        hog(&ctx,him);
+        hof(&ctx,input);
         acc+=(float)toc(&clock);
         
-        hog_features_copy(&ctx,out);
+        hof_features_copy(&ctx,out);
         struct hog_feature_dims shape,strides;
-        hog_features_shape(&ctx,&shape);
-        hog_features_strides(&ctx,&strides);
+        hof_features_shape(&ctx,&shape);
+        hof_features_strides(&ctx,&strides);
 
         hogshow(0,0,&shape,&strides,out);
-        //hogshow(0,0,8,256/params.cell.w,256/params.cell.h,out);
         imshow(imshow_u8,256,256,input);
 
         ++nframes;
     }
-    hog_teardown(&ctx);
+    hof_teardown(&ctx);
     LOG("nframes: %f\n",nframes);
-    LOG("Mean HoG time: %f us\n",1e6*acc/(float)nframes);
-    LOG("Mean HoG throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
+    LOG("Mean HoF time: %f us\n",1e6*acc/(float)nframes);
+    LOG("Mean HoF throughput: %f Mpx/s\n",1e-6*nframes*ctx.params.input.w*ctx.params.input.h/acc);
     return 0;
 }
 
 /* 
  * TIMING DATA 
  * 
- * (sigmas: der 1px smooth 4px, 256x256 u8 inputs, HAL9001)
+ * (sigmas: der 1px smooth 3px, 256x256 u8 inputs, HAL9001)
  * - cpu Release (b275a59)
- *   4.74 Mpx/s (13815 us/frame)
+ *   4.53 Mpx/s (14479 us/frame)
+ *   
  */

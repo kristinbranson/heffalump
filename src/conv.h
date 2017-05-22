@@ -23,9 +23,7 @@ struct conv_context {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     unsigned w,h;
     int pitch;
-    float *out;       // device mem
-    float *kernel[2];  // device mem
-    unsigned nkernel[2];
+    float *out;
     void *workspace;
 };
 
@@ -61,7 +59,7 @@ void conv_teardown(struct conv_context *self);
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `conv_alloc` and `conv_copy` functions.
 */
-void conv(struct conv_context *self,enum conv_scalar_type type,void *im);
+void conv(struct conv_context *self,enum conv_scalar_type type,const void *im);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 
@@ -78,18 +76,3 @@ void  conv_copy(const struct conv_context *self, float *out);
 #endif
 
 #endif
-
-
-/* TODO
-
-- Kernel is added on init of context, but it's more natural to let that 
-  vary without needing to reinit a context.
-
-API
- - combine conv and conv_push
-   unless we're changing kernels all the time?
- - allow setting of output pointer on init
-   API should allow avoiding a copy if possible.
-   Right now, if trying do do an in-place, there's a forced copy on the cpu impl
-
-*/

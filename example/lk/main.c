@@ -162,13 +162,12 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 
     float* out=lk_alloc(&ctx,malloc);
     app_init(logger);
-    imshow_contrast(imshow_f32,-10,10); //max(nks[0],1)*max(nks[1],1)*255.0);
+    imshow_contrast(imshow_f32,-10,10);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;    
 
     while(app_is_running()) {
         float* input=disk(app_uptime_s()/10.0);
-        //float* input=disk(nframes/30.0f);
 #if 0
         autocontrast(input,ctx.w*ctx.h);
         imshow(imshow_f32,ctx.w,ctx.h,input);

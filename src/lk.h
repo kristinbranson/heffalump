@@ -74,7 +74,7 @@ void lk_teardown(struct lk_context *self);
     The input image is stored in the context as the last timepoint.
     For the first image, the last timepoint is a blank image.
 */
-void lk(struct lk_context *self,void *im);
+void lk(struct lk_context *self,const void *im);
 
 /** Allocates a results buffer using the supplied `alloc` function.
     The returned buffer will have enough capacity for it to be used with 

@@ -41,9 +41,11 @@ struct App {
 static struct App app;
 
 const char* app_version() {
-    #define STR(e) #e
+    #define QUOTE(name) #name
+    #define STR(macro) QUOTE(macro)
     return "Version " STR(GIT_TAG) STR(GIT_HASH);
     #undef STR
+    #undef QUOTE
 }
 
 static void app_resize(unsigned w,unsigned h) {
@@ -269,8 +271,8 @@ struct LayeredWindow {
 static struct LayeredWindow LAYERED_WINDOW;
 
 static void lw_draw() {
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
         c->draw();
     }
@@ -278,7 +280,7 @@ static void lw_draw() {
 
 static void lw_resize(int w,int h) {
     for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
-        c->resize(w,h);
+        if(c->resize) c->resize(w,h);
     }
     mingl_check();
     glViewport(0,0,w,h);

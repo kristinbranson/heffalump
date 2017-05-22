@@ -1,7 +1,8 @@
 #include "../imshow/mingl.h"
+#include "../imshow/app.h"
 #include <math.h>
 #include <stdlib.h>
-#include "app.h"
+#include "hogshow.h"
 
 static const char FRAG[]=GLSL(
     out vec4 c;
@@ -28,6 +29,23 @@ struct hogview_attr {
     float cellw,cellh,scale;
 };
 
+static struct commands {
+    unsigned flags;
+    struct show {
+        struct hog_feature_dims shape,strides;
+        float x,y;
+        const void *data;
+    } show;
+    struct viewport {
+        int w,h;
+    } viewport;
+};
+
+enum cmd {
+    CMD_SHOW=1,
+    CMD_VIEWPORT=2
+};
+
 static struct context {
     unsigned vao,vbo,program;
     struct {
@@ -37,9 +55,10 @@ static struct context {
         struct vert *data;
         size_t n,cap; // size and capacity in elements
     } verts;
-	int nverts_per_cell;
+    int nverts_per_cell;
     struct hogview_attr attr;
     struct Layer layer;
+    struct commands command;
 } CTX, *context_;
 
 static void teardown() {
@@ -58,9 +77,9 @@ static void init() {
     self->id.size=glGetUniformLocation(self->program,"size");
     self->id.color=glGetUniformLocation(self->program,"color");
 
-	glUseProgram(self->program);
-	glUniform4f(self->id.color,1.0f,1.0f,1.0f,1.0f);
-	glUseProgram(0);
+    glUseProgram(self->program);
+    glUniform4f(self->id.color,1.0f,1.0f,1.0f,1.0f);
+    glUseProgram(0);
 
     // Prepping vertex buffers
     glGenBuffers(1,&self->vbo);
@@ -111,27 +130,27 @@ static void maybe_resize_verts(int nbins, int ncellw, int ncellh) {
 // (v2 v3) is first tri, (v4 v5) is second etc.
 // (v3,v4) is a "transition triangle"
 // Gives 2+nbin verts per cell.
-static void compute_verts(float x0,float y0, int nbins,int ncellw,int ncellh, const float *hogdata) {
+static void compute_verts(float x0,float y0, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const float *hogdata) {
     // maybe_resize_verts will ensure memory is init'd correctly regardless of app state.
     const struct context *self=&CTX; 
-    maybe_resize_verts(nbins,ncellw,ncellh);
-    int ncell=ncellw*ncellh;
-    const float dth=6.2831853071f/(float)nbins;
+    maybe_resize_verts(shape->bin,shape->x,shape->y);
+    int ncell=shape->x*shape->y;
+    const float dth=6.2831853071f/(float)shape->bin;
     int ivert=0;
-    const int nverts_per_cell=2*nbins+1;
-	CTX.nverts_per_cell=nverts_per_cell;
+    const int nverts_per_cell=2*shape->bin+1;
+    CTX.nverts_per_cell=nverts_per_cell;
     int icell=0;
-    for(int ycell=0;ycell<ncellh;++ycell) {
-        for(int xcell=0;xcell<ncellw;++xcell,++icell) {
+    for(int ycell=0;ycell<shape->y;++ycell) {
+        for(int xcell=0;xcell<shape->x;++xcell,++icell) {
             struct vert* vs=self->verts.data+icell*nverts_per_cell;
             // center vert for cell
             vs[0].x=x0+self->attr.cellw*(0.5f+xcell);
             vs[0].y=y0+self->attr.cellh*(0.5f+ycell);
             // outer verts for cell
             int ibin;
-            for(ibin=0;ibin<nbins;++ibin) {
+            for(ibin=0;ibin<shape->bin;++ibin) {
                 const float th0=dth*(ibin-0.5f),th1=dth*(ibin+0.5f);
-				float radius=self->attr.scale*hogdata[xcell+ycell*ncellw+ibin*ncell]; // this is how pdollar arranges the data...not sure this is best                
+                float radius=self->attr.scale*hogdata[xcell*strides->x+ycell*strides->y+ibin*strides->bin]; // this is how pdollar arranges the data...not sure this is best                
                 vs[2*ibin+1].x=vs[0].x+radius*cosf(th0);
                 vs[2*ibin+1].y=vs[0].y+radius*sinf(th0);
                 vs[2*ibin+2].x=vs[0].x+radius*cosf(th1);
@@ -139,7 +158,7 @@ static void compute_verts(float x0,float y0, int nbins,int ncellw,int ncellh, co
             }
         }
     }
-	
+    
 }
 
 static void show() {
@@ -149,31 +168,22 @@ static void show() {
     glBindBuffer(GL_ARRAY_BUFFER,self->vbo);
     glBufferData(GL_ARRAY_BUFFER,self->verts.n*sizeof(struct vert),self->verts.data,GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER,0);
+    // stretch to fill
+    glUseProgram(CTX.program);    
+    glUniform2f(CTX.id.size,
+        CTX.attr.cellw*CTX.command.show.shape.x,
+        CTX.attr.cellh*CTX.command.show.shape.y);
+    glUseProgram(0);
 }
 
-static struct commands {
-    unsigned flags;
-    struct show {
-        int nbins,ncellw,ncellh;
-        float x,y;
-        const void *data;
-    } show;
-    struct viewport {
-        int w,h;
-    } viewport;
-} command;
 
-enum cmd {
-    CMD_SHOW=1,
-    CMD_VIEWPORT=2
-};
 
 static void resolve_updates() {
     // NOTE: Race condition here.  We might end up getting a new command
-    // between when flags are read and when they are re-zerod.  That new 
+    // between when flags are read and when they are re-zero'd.  That new 
     // command will be ignored.
-    unsigned flags=command.flags;
-    command.flags=0;
+    unsigned flags=CTX.command.flags;
+    CTX.command.flags=0;
     mingl_check();
     if((flags & CMD_SHOW)==CMD_SHOW) {
 #define C(e) command.show.e
@@ -193,12 +203,9 @@ static void draw() {
     glBindBuffer(GL_ARRAY_BUFFER,CTX.vbo);
     glBindVertexArray(CTX.vao);
 
-
-    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);	
-	int i;
-	for(i=0;i<CTX.verts.n;i+=CTX.nverts_per_cell)
-		glDrawArrays(GL_TRIANGLE_FAN,i,CTX.nverts_per_cell);
-    //glPolygonMode(GL_FRONT,GL_FILL); // restore default
+    int i;
+    for(i=0;i<CTX.verts.n;i+=CTX.nverts_per_cell)
+        glDrawArrays(GL_TRIANGLE_FAN,i,CTX.nverts_per_cell);
 
     
     glBindVertexArray(0);
@@ -208,15 +215,10 @@ static void draw() {
 
 static void resize(int w,int h) {
     if(!context_) init();
-	glUseProgram(CTX.program);
-    //glUniform2f(CTX.id.size,(float)w,(float)h);
-	glUniform2f(CTX.id.size,256,256);
-	glUseProgram(0);
 }
 
-// Declarations for interface
-void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);
-void hogshow_set_attr(float scale,float cellw,float cellh);
+
+// Interface
 
 void hogshow_set_attr(float scale, float cellw, float cellh) {
     CTX.attr.scale=scale;
@@ -224,25 +226,24 @@ void hogshow_set_attr(float scale, float cellw, float cellh) {
     CTX.attr.cellw=cellw;
 }
 
-void hogshow(float x, float y, int nbins, int ncellw, int ncellh, const void *data) {
+void hogshow(float x, float y, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const void *data) {
     if(app_is_running()&&!CTX.layer.added) {
         // Fill in the required callbacks:
         // This has to happen outside of the init() function
         // because this interface needs to be defined before
         // the app actually creates the window.
         CTX.layer.draw=draw;
-        CTX.layer.resize=resize;
+        CTX.layer.resize=0;
         window_add_layer(&CTX.layer);
     }
 
-    compute_verts(x,y,nbins,ncellw,ncellh,(const float*)data);
+    compute_verts(x,y,shape,strides,(const float*)data);
     
-    command.flags|=CMD_SHOW;
-    command.show.nbins=nbins;
-    command.show.ncellw=ncellw;
-    command.show.ncellh=ncellh;
-    command.show.x=x;
-    command.show.y=y;
-    command.show.data=data;
+    CTX.command.flags|=CMD_SHOW;
+    CTX.command.show.shape=*shape;
+    CTX.command.show.strides=*strides;
+    CTX.command.show.x=x;
+    CTX.command.show.y=y;
+    CTX.command.show.data=data;
 }
 
