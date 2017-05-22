@@ -8,8 +8,8 @@ static const char FRAG[]=GLSL(
     uniform vec4 color;
 
     void main() {
-        //c=color;
-        c=vec4(1,1,1,1);
+        c=color;
+        //c=vec4(1,1,1,1);
     }
 );
 
@@ -17,8 +17,8 @@ static const char VERT[]=GLSL(
     layout(location=0) in vec2 vert;
     uniform vec2 size;
 
-    void main(){
-        gl_Position=vec4(2*vert/size,0,1);
+    void main(){		
+        gl_Position=vec4(vec2(1,-1)*(2*vert/size-1),0,1);
     }
 );
 
@@ -37,6 +37,7 @@ static struct context {
         struct vert *data;
         size_t n,cap; // size and capacity in elements
     } verts;
+	int nverts_per_cell;
     struct hogview_attr attr;
     struct Layer layer;
 } CTX, *context_;
@@ -56,6 +57,10 @@ static void init() {
     self->program=mingl_new_program(FRAG,sizeof(FRAG),VERT,sizeof(VERT),0,0);
     self->id.size=glGetUniformLocation(self->program,"size");
     self->id.color=glGetUniformLocation(self->program,"color");
+
+	glUseProgram(self->program);
+	glUniform4f(self->id.color,1.0f,1.0f,1.0f,1.0f);
+	glUseProgram(0);
 
     // Prepping vertex buffers
     glGenBuffers(1,&self->vbo);
@@ -114,19 +119,19 @@ static void compute_verts(float x0,float y0, int nbins,int ncellw,int ncellh, co
     const float dth=6.2831853071f/(float)nbins;
     int ivert=0;
     const int nverts_per_cell=2*nbins+1;
+	CTX.nverts_per_cell=nverts_per_cell;
     int icell=0;
     for(int ycell=0;ycell<ncellh;++ycell) {
         for(int xcell=0;xcell<ncellw;++xcell,++icell) {
             struct vert* vs=self->verts.data+icell*nverts_per_cell;
             // center vert for cell
-            vs[0].x=x0+self->attr.cellw*xcell;
-            vs[0].y=y0+self->attr.cellh*ycell;
+            vs[0].x=x0+self->attr.cellw*(0.5f+xcell);
+            vs[0].y=y0+self->attr.cellh*(0.5f+ycell);
             // outer verts for cell
             int ibin;
             for(ibin=0;ibin<nbins;++ibin) {
-                const float th0=dth*ibin,th1=dth*(ibin+1);
-                float radius=self->attr.scale*hogdata[ibin+icell*nbins];
-                radius=max(radius,5);
+                const float th0=dth*(ibin-0.5f),th1=dth*(ibin+0.5f);
+				float radius=self->attr.scale*hogdata[xcell+ycell*ncellw+ibin*ncell]; // this is how pdollar arranges the data...not sure this is best                
                 vs[2*ibin+1].x=vs[0].x+radius*cosf(th0);
                 vs[2*ibin+1].y=vs[0].y+radius*sinf(th0);
                 vs[2*ibin+2].x=vs[0].x+radius*cosf(th1);
@@ -134,19 +139,16 @@ static void compute_verts(float x0,float y0, int nbins,int ncellw,int ncellh, co
             }
         }
     }
+	
 }
 
 static void show() {
     if(!context_) init();
     struct context *self=context_;
     // Upload: computed verts
-    mingl_check();
     glBindBuffer(GL_ARRAY_BUFFER,self->vbo);
-    mingl_check();
-    glBufferData(GL_ARRAY_BUFFER,self->verts.n,self->verts.data,GL_DYNAMIC_DRAW);
-    mingl_check();
+    glBufferData(GL_ARRAY_BUFFER,self->verts.n*sizeof(struct vert),self->verts.data,GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER,0);
-    mingl_check();
 }
 
 static struct commands {
@@ -192,8 +194,10 @@ static void draw() {
     glBindVertexArray(CTX.vao);
 
 
-    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-    glDrawArrays(GL_TRIANGLE_FAN,0,CTX.verts.n);
+    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);	
+	int i;
+	for(i=0;i<CTX.verts.n;i+=CTX.nverts_per_cell)
+		glDrawArrays(GL_TRIANGLE_FAN,i,CTX.nverts_per_cell);
     //glPolygonMode(GL_FRONT,GL_FILL); // restore default
 
     
@@ -204,9 +208,10 @@ static void draw() {
 
 static void resize(int w,int h) {
     if(!context_) init();
-    mingl_check();
-    glUniform2f(CTX.id.size,(float)w,(float)h);
-    mingl_check();
+	glUseProgram(CTX.program);
+    //glUniform2f(CTX.id.size,(float)w,(float)h);
+	glUniform2f(CTX.id.size,256,256);
+	glUseProgram(0);
 }
 
 // Declarations for interface

@@ -77,7 +77,7 @@ static void* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.0;
+        buf[i]*=0.1;
 
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -100,6 +100,7 @@ static void* disk(double time) {
         }
     }
 
+#if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
@@ -120,7 +121,9 @@ static void* disk(double time) {
             }
         }
     }
+#endif 
 
+#if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
@@ -141,6 +144,7 @@ static void* disk(double time) {
             }
         }
     }
+#endif
 
 #if 1
     memcpy(out,buf,256*256); // make a copy so we don't get flashing (imshow input isn't buffered)
@@ -170,12 +174,12 @@ static void autocontrast(const float *out,int n) {
 //void hogshow_set_attr(float scale,float cellw,float cellh);
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={8,8},.nbins=8};
+    struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
 
-    hogshow_set_attr(8,8,8);
+    hogshow_set_attr(1,params.cell.w,params.cell.h);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
@@ -194,13 +198,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog(&ctx,him);
         acc+=(float)toc(&clock);
         
-        hog_features_copy(&ctx,out);
-        /* TODO: vis? */
-        
-        struct workspace* ws=(struct workspace*)ctx.workspace;
-        autocontrast(ws->O,256*256);
-        //imshow(imshow_f32,256,256,ws->M);
-        hogshow(0,0,8,256/8,256/8,out);
+        hog_features_copy(&ctx,out);        
+
+		hogshow(0,0,8,256/params.cell.w,256/params.cell.h,out);
+        imshow(imshow_u8,256,256,input);
 
         ++nframes;
     }

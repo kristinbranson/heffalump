@@ -269,6 +269,8 @@ struct LayeredWindow {
 static struct LayeredWindow LAYERED_WINDOW;
 
 static void lw_draw() {
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     for(struct Layer *c=LAYERED_WINDOW.layers;c;c=c->next) {
         c->draw();
     }

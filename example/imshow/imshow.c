@@ -11,7 +11,7 @@ static const char FRAG[]=GLSL(
     void main(){
         vec4 c=texture(im,tex_);
         c=(c-zero)/range;
-        color=vec4(c.rgb,1.0);
+        color=vec4(c.rgb,1);
     }
 );
 
