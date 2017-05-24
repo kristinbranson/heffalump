@@ -15,18 +15,13 @@ __global__ void fill4vec(float *out) {
     reinterpret_cast<float4*>(out)[x] =make_float4(4*x,4*x+1,4*x+2,4*x+3);
 }
 
-
-__global__ void copy(float * __restrict__ dst,const float * __restrict__ src) {
-    int x=4*(threadIdx.x+blockIdx.x*blockDim.x);
-    dst[x]=src[x];
-    dst[x+1]=src[x+1];
-    dst[x+2]=src[x+2];
-    dst[x+3]=src[x+3];
-}
-
-__global__ void copy4vec(float * __restrict__ dst,const float * __restrict__ src) {
+ __global__ void copy4vec(float * __restrict__ dst,const float * __restrict__ src) {
     int x=threadIdx.x+blockIdx.x*blockDim.x;
-    reinterpret_cast<float4*>(dst)[x]=reinterpret_cast<const float4*>(src)[x];
+    __shared__ float4 tmp[1024];    
+    tmp[threadIdx.x]=reinterpret_cast<const float4*>(src)[x];
+    __syncthreads(); // an attempt to separate read and write bandwidth (it doesn't work).
+    reinterpret_cast<float4*>(dst)[x]=tmp[threadIdx.x];
+
 }
 
 void test_fill() {
@@ -104,5 +99,6 @@ int main() {
         1e-9*4*N/(1e-3*acc/REPS));
 
     CUTRY(cudaDeviceSynchronize());
+
     return 0;
 }
