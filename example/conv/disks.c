@@ -9,6 +9,8 @@
 #include "imshow.h"
 #include "app.h"
 
+#define W (2048)
+#define H (2048)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -33,12 +35,97 @@ static char* im() {
         LARGE_INTEGER t;
         QueryPerformanceCounter(&t);
         sfmt_init_gen_rand(&state,t.LowPart);
-        buf=malloc(256*256);
+        buf=malloc(W*H);
     }
     // ~1.7 GB/s on Intel(R) Core(TM) i7-4770S CPU @ 3.10GHz
     // ~26k fps @ 256x256
-    sfmt_fill_array64(&state,(uint64_t*)buf,(256*256)/sizeof(uint64_t));
+    sfmt_fill_array64(&state,(uint64_t*)buf,(W*H)/sizeof(uint64_t));
     return buf;
+}
+
+static void* disk(double time) {
+    static float *out=0;
+    static unsigned nks[]={3,3};
+    if(!out) {
+        out=malloc(W*H);
+    }
+
+    // additive noise
+    unsigned char* buf=im();
+    for(int i=0;i<W*H;++i)
+        buf[i]*=0.5f;
+
+#if 1
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=((float)W)*(0.25f*sin(time*6.28)+0.5f),
+              cy=((float)H)*(0.25f*cos(time*6.28)+0.5f);
+        const float r=0.05f*W;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                      yy=cy-iy,
+                      r2=xx*xx+yy*yy,
+                      dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr;
+                if(dr>0)
+                    buf[iy*W+ix]=255*dr;
+            }
+        }
+    }
+#endif
+
+#if 1
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=((float)W)*(0.125f*sin(-2*time*6.28)+0.5f),
+              cy=((float)H)*(0.125f*cos(-2*time*6.28)+0.5f);
+        const float r=0.01f*W;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                    yy=cy-iy,
+                    r2=xx*xx+yy*yy,
+                    dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr; 
+                if(dr>0)
+                    buf[iy*W+ix]=255*dr;
+            }
+        }
+    }
+#endif 
+
+#if 1
+    // A disk.  It's important to have a sub-pixel center.
+    // Otherwise the optical-flow is all flickery
+    {
+        float cx=((float)W)*(0.1875f*sin( 7*time*6.28)+0.5f),
+              cy=((float)H)*(0.1875f*cos(-3*time*6.28)+0.5f);
+        const float r=0.1f*W;
+        for(int y=-r-1;y<=(r+1);++y) {
+            for(int x=-r-1;x<=(r+1);++x) {
+                int ix=((int)cx)-x,
+                    iy=((int)cy)-y;
+                float xx=cx-ix,
+                    yy=cy-iy,
+                    r2=xx*xx+yy*yy,
+                    dr=r-sqrtf(r2);
+                dr=(dr>1)?1:dr;
+                if(dr>0)
+                    buf[iy*W+ix]=255*dr;
+            }
+        }
+    }
+#endif
+
+    memcpy(out,buf,W*H); // make a copy so we don't get flashing (imshow input isn't buffered)
+    return out; // returns u8 image
 }
 
 static float* gaussian(float *k,int n,float sigma) {
@@ -79,21 +166,24 @@ static void autocontrast(const float *out,int n) {
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
     float buf[25*2];
-    unsigned nks[]={19,19};
+    unsigned nks[]={15,15};
     float* ks[]={
         gaussian_derivative(buf,nks[0],3.0f),
         gaussian_derivative(&buf[25],nks[1],3.0f),
     };
     
-    struct conv_context ctx=conv_init(logger,256,256,256,ks,nks);
+    struct conv_context ctx=conv_init(logger,W,H,W,ks,nks);
     float* out=conv_alloc(&ctx,malloc);
     app_init(logger);
     imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     while(app_is_running()) {
-        char* input=im();
-
+        char* input=disk(app_uptime_s()/10.0);
+#if 0
+        imshow_contrast(imshow_u8,0,255);
+        imshow(imshow_u8,W,H,input);
+#else
         clock=tic();
         conv(&ctx,conv_u8,input);
         acc+=(float)toc(&clock);
@@ -102,6 +192,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         conv_copy(&ctx,out);
         autocontrast(out,ctx.w*ctx.h);
         imshow(imshow_f32,ctx.w,ctx.h,out);
+#endif
     }
     conv_teardown(&ctx);
     LOG("nframes: %f\n",nframes);

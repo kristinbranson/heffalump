@@ -17,6 +17,11 @@ add_executable(${tgt} WIN32 conv/delta.c tictoc.c tictoc.h)
 target_link_libraries(${tgt} hog_${impl} imshow)
 set_target_properties(${tgt} PROPERTIES FOLDER examples)
 
+set(tgt conv-disks-${impl})
+add_executable(${tgt} WIN32 conv/disks.c tictoc.c tictoc.h)
+target_link_libraries(${tgt} hog_${impl} sfmt imshow)
+set_target_properties(${tgt} PROPERTIES FOLDER examples)
+
 set(tgt lk-${impl})
 add_executable(${tgt} WIN32 lk/main.c tictoc.c tictoc.h)
 target_link_libraries(${tgt} hog_${impl} sfmt imshow)

@@ -3,13 +3,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <windows.h>
-#include "../tictoc.h"
+#include "tictoc.h"
 #include <conv.h>
-#include "imshow.h"
-#include "app.h"
-
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+
+#define W (2048)
+#define H (2048)
 
 static void logger(int is_error,const char *file,int line,const char* function,const char *fmt,...) {
     char buf1[1024]={0},buf2[1024]={0};
@@ -28,9 +28,9 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 static char* delta() {
     static char *buf=0;
     if(!buf) {
-        buf=malloc(256*256);
-        memset(buf,0,256*256);
-        buf[128*256+128]=255;
+        buf=malloc(W*H);
+        memset(buf,0,W*H);
+        buf[(size_t)(0.5f*(H*W+W))]=255;
     }    
     return buf;
 }
@@ -58,62 +58,37 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     return k;
 }
 
-#include <float.h>
-static void autocontrast(const float *out,int n) {
-    static float mn=FLT_MAX;
-    static float mx=-FLT_MAX;
-    const float *end=out+n;
-    for(const float *c=out;c<end;++c) {
-        mn=min(mn,*c);
-        mx=max(mx,*c);
-    }
-    imshow_contrast(imshow_f32,mn,mx);    
-
-}
+float conv_last_elapsed_ms(const struct conv_context* self);
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
-    float buf[25*2];
-    unsigned nks[]={19,19};
+    float buf[50*2];
+    unsigned nks[]={3,3};
     float* ks[]={
         gaussian_derivative(buf,nks[0],3.0f),
-        gaussian_derivative(&buf[25],nks[1],3.0f),
+        gaussian_derivative(&buf[50],nks[1],3.0f),
     };
     
-    struct conv_context ctx=conv_init(logger,256,256,256,ks,nks);
+    struct conv_context ctx=conv_init(logger,W,H,W,ks,nks);
     float* out=conv_alloc(&ctx,malloc);
-    app_init(logger);
-    imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
-    while(app_is_running()) {
+    float kern_acc_ms=0.0f;
+    for(int i=0;i<1000;++i) {
         char* input=delta();
 
         clock=tic();
         conv(&ctx,conv_u8,input);
         acc+=(float)toc(&clock);
+        kern_acc_ms+=conv_last_elapsed_ms(&ctx);
         ++nframes;
-
-        conv_copy(&ctx,out);
-        autocontrast(out,ctx.w*ctx.h);
-        imshow(imshow_f32,ctx.w,ctx.h,out);
     }
     conv_teardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean convolution throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
+
+    LOG("Mean convolution Kernel time: %f us\n",1e3*kern_acc_ms/(float)nframes);
+    LOG("Mean convolution Kernel throughput: %f Mpx/s consumed input\n",1e-3*nframes*ctx.w*ctx.h/kern_acc_ms);
+    LOG("Mean convolution Kernel throughput: %f MB/s total bandwidth\n",1e-3*5*nframes*ctx.w*ctx.h/kern_acc_ms); // 1 byte in 4 bytes out per pixel
     return 0;
 }
-
-/* 
- * TIMING DATA 
- * 
- * (5x5 kernel, 256x256 inputs, HAL9001)
- * - cpu Release - malloc in conv
- *   57.5 MB/s (1138 us/frame)
- * - cpu Release - no malloc in conv
- *   67.8 MB/s (966 us/frame)
- * - cpu Release - specialize for unit strides
- *   77.7 MB/s (843 us/frame)
- * 
- * 
- */
