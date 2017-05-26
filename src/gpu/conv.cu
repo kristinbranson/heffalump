@@ -85,6 +85,48 @@ namespace priv {
     };
 
     /**
+     * This performs convolution along a non-unit stride direction.
+     * Load's still happen along a unit-stride direction; elements (pixels)
+     * have to be contiguous in memory.
+     * 
+     * Below, the "x" direction is along the unit-stride direction.
+     * Lines are along the "x" direction and have width "w".
+     * Moving from one line to the next requires a stride of "p" elements.
+     * There are "h" lines.
+     *
+     * Alignment requirements
+     *  in  - aligned to 16 bytes (128 bit loads)
+     *  w   - aligned to 16 bytes
+     *  p   - aligned to 16 bytes
+     *  out - aligned to 16 bytes (128 bit stores)
+     *
+     * Template parameters
+     * These determine the amount of shared memory used.
+     *   T - input scalar type - Types that are 1-4 bytes wide should be fine. Not sure about 8 wide.
+     *  BH - block height      - 
+     *  BW - block width       - 
+     */
+    template<typename T, int BH, int BW>
+    __global__ void conv_nonunit_stride_k(float * __restrict__ out,const T* __restrict__ in,int w,int h,int p,const float *__restrict__ k,int nk) {
+        #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
+        __shared__ T v[BH*BW*PAYLOAD];
+
+        const int A=(nk-1)/2;         // apron size (elems): nk|A :: 3|1, 9|4, 19|9
+        const int P=16*((A+15)/16);   // apron size (elems) aligned to a half warp: nk|P :: 3|16, 9|16, 19|16
+        const int WP=P/16;            // number of warps required to load both sides of the (padded) apron.
+
+        // Load
+        {
+            // Here: threadIdx.x is used to load along different lines (moves in y in the image)
+            //       threadIdx.y moves along the x direction in the image.
+            const int x0=(threadIdx.y+blockIdx.y*blockDim.y)*PAYLOAD; // Origin along the x direction
+            const int y0=
+        }
+    }
+
+    /**
+     * This performs convolution along the unit-stride direction.
+     * 
      * Alignment requirements
      *  in  - aligned to 16 bytes (128 bit loads)
      *  w   - aligned to 16 bytes       
@@ -93,10 +135,9 @@ namespace priv {
      *
      * Template parameters
      * These determine the amount of shared memory used.
-     *  BH - block height - the number of output y's processed by the block
-     *  BW - block width  - the number of output x's processed by the block
-     *  NK_MAX            - the maximum kernel size (apron size) supported.
-     *  P                 - the required apron padding :: 4*ceil((NK_MAX-1)/8)
+     *   T - input scalar type - Types that are 1-4 bytes wide should be fine. Not sure about 8 wide.
+     *  BH - block height      - the number of output y's processed by the block
+     *  BW - block width       - the number of output x's processed by the block
      */
     template<typename T,int BW,int BH>
     __global__ void conv_unit_stride_k(float * __restrict__ out,const T * __restrict__ in,int w, int p,const float * __restrict__ k,int nk) {
@@ -114,8 +155,6 @@ namespace priv {
         {
             const int x0=(x-P)+threadIdx.x*PAYLOAD;  // location to load
             float4 *vv=reinterpret_cast<float4*>(v)+threadIdx.y*BW+threadIdx.x;
-
-            // TODO: check to see if restricts in cast are necessary by comparing the optimized SAXX
             if(x0>=0&&x0<w) {
                 *vv=reinterpret_cast<const float4*>(in+y*p+x0)[0];
             } else { // out of bounds -- clamp to edge
@@ -138,13 +177,12 @@ namespace priv {
                 T* line=v+threadIdx.y*BW*PAYLOAD+(P-A)+cx;
 #if 0// pass through
                 acc[iwork]=line[A];
-#else
+#else                
+                // The access pattern for the kernel is a hot mess.
                 acc[iwork]=0.0f;
                 for(int i=0;i<nk;++i)
                     acc[iwork]+=k[i]*line[i];
 #endif
-            } else {
-                acc[iwork]=10000.0f;
             }
         }
 
@@ -157,11 +195,12 @@ namespace priv {
         
         for(int iwork=0;iwork<PAYLOAD;iwork+=4) {
             int cx=threadIdx.x+iwork*8;     // x offset for float4 write
-            
+                        
             for(int j=0;j<4;++j)
                 line_sm[j*32+threadIdx.x]=acc[iwork+j];            
             // filter in-bounds threads (out w must be aligned to 16 bytes/4 elems)
             // this is super divergent, so I added the syncthreads...
+            // syncthreads doesn't really make it faster, but here it makes it easier to understand when profiling
             // FIXME: address divergence
             // - is there a way to overlap output with compute more?
             __syncthreads();
