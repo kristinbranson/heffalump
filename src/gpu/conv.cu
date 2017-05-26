@@ -120,7 +120,7 @@ namespace priv {
             // Here: threadIdx.x is used to load along different lines (moves in y in the image)
             //       threadIdx.y moves along the x direction in the image.
             const int x0=(threadIdx.y+blockIdx.y*blockDim.y)*PAYLOAD; // Origin along the x direction
-            const int y0=
+            const int y0=(threadIdx.x+blockIdx.x*blockDim.x);
         }
     }
 
