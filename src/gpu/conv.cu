@@ -42,6 +42,7 @@ namespace priv {
             in=nullptr;
             nbytes_in=0;
             CUTRY(cudaMalloc(&out,priv::sizeof_output(w,h)));
+            CUTRY(cudaMalloc(&tmp,priv::sizeof_output(w,h)));
             CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nks[0]));
             CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nks[1]));
             CUTRY(cudaMemcpy(kernels[0],ks[0],nks[0]*sizeof(float),cudaMemcpyHostToDevice));
@@ -56,6 +57,7 @@ namespace priv {
         ~workspace() {
             CUTRY(cudaFree(in));
             CUTRY(cudaFree(out));
+            CUTRY(cudaFree(tmp));
             CUTRY(cudaFree(kernels[0]));
             CUTRY(cudaFree(kernels[1]));
 
@@ -76,7 +78,7 @@ namespace priv {
 
         void  *in;         ///< device pointer
         size_t nbytes_in;///< capacity of in buffer
-        float *out;        ///< device pointer
+        float *out,*tmp;        ///< device pointer
         float *kernels[2]; ///< device pointers
         unsigned nkernel[2];
 
@@ -95,32 +97,81 @@ namespace priv {
      * There are "h" lines.
      *
      * Alignment requirements
-     *  in  - aligned to 16 bytes (128 bit loads)
-     *  w   - aligned to 16 bytes
-     *  p   - aligned to 16 bytes
-     *  out - aligned to 16 bytes (128 bit stores)
+     *   w - must be aligned to 32 elements (byte size depends on T)
+     *   p - must be aligned to 16 bytes
      *
      * Template parameters
      * These determine the amount of shared memory used.
-     *   T - input scalar type - Types that are 1-4 bytes wide should be fine. Not sure about 8 wide.
-     *  BH - block height      - 
-     *  BW - block width       - 
+     *   T  - input scalar type - Types that are 1-4 bytes wide should be fine. Not sure about 8 wide.
      */
-    template<typename T, int BH, int BW>
+    template<typename T>
     __global__ void conv_nonunit_stride_k(float * __restrict__ out,const T* __restrict__ in,int w,int h,int p,const float *__restrict__ k,int nk) {
         #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
-        __shared__ T v[BH*BW*PAYLOAD];
+        __shared__ T v[8*33*PAYLOAD]; // 8 input tiles of PAYLOADx32. Stride by 33 to avoid bank conflicts.
+        __shared__ float s_out[8*33]; // output buffer for block 
 
-        const int A=(nk-1)/2;         // apron size (elems): nk|A :: 3|1, 9|4, 19|9
-        const int P=16*((A+15)/16);   // apron size (elems) aligned to a half warp: nk|P :: 3|16, 9|16, 19|16
-        const int WP=P/16;            // number of warps required to load both sides of the (padded) apron.
-
-        // Load
+        const int A=(nk-1)/2;    // apron size (elems): nk|A :: 3|1, 9|4, 19|9
+        const int P=4*((A+3)/4); // apron aligned to 4
+        const int NY=blockDim.z*32-2*A;        
+        
+        // Load        
         {
-            // Here: threadIdx.x is used to load along different lines (moves in y in the image)
-            //       threadIdx.y moves along the x direction in the image.
-            const int x0=(threadIdx.y+blockIdx.y*blockDim.y)*PAYLOAD; // Origin along the x direction
-            const int y0=(threadIdx.x+blockIdx.x*blockDim.x);
+            // load origin in the input image (tile+lane offset)
+            // block origin
+            const int bx=blockIdx.x*32;
+            const int by=blockIdx.y*NY;
+            // tile index - tiles are PAYLOADx32 - 8 tiles are loaded per block
+            const int tx=threadIdx.y*PAYLOAD;
+            const int ty=threadIdx.z*32;
+            //           
+            const int x0=tx+bx; // Assume: x0 is always in-bounds
+            const int y0=threadIdx.x-A+ty+by;
+            // destination in shared mem buffer
+            const int xs=threadIdx.y*PAYLOAD;
+            const int ys=threadIdx.x+threadIdx.z*32;
+            {
+                // FIXME: Still getting double the transactions from ideal?
+                //        bank conflict?  how to avoid
+                if(0<=y0 && y0<h) // in bounds
+                    reinterpret_cast<float4*>(v)[(xs+ys*32)/PAYLOAD]=reinterpret_cast<const float4*>(in)[(x0+y0*p)/PAYLOAD];
+                else { // out of bounds - clamp to edge
+                    if(y0<0)
+                        reinterpret_cast<float4*>(v+xs+ys*32)[0]=reinterpret_cast<const float4*>(in+x0)[0];
+                    else
+                        reinterpret_cast<float4*>(v+xs+ys*32)[0]=reinterpret_cast<const float4*>(in+x0+(h-1)*p)[0];
+                }
+            }
+        }
+
+        __syncthreads();
+        // work and output
+        const int y=threadIdx.y+threadIdx.z*blockDim.y; // y will be 0..7
+        for(int iline=0;iline<NY;iline+=8) {
+            // process 8 lines using 8 warps            
+            float acc=0.0f;
+            T* lane=v+threadIdx.x+32*(y+iline);
+#if 0 // pass through
+            acc=lane[32*A];
+#else
+            for(int i=0;i<nk;++i)
+                acc+=k[i]*lane[i*32];
+#endif
+            s_out[threadIdx.x+32*y]=acc;
+
+            __syncthreads();
+            // output 8 lines using 2 warps
+            if(threadIdx.y<2) {
+                // block origin
+                const int bx=blockIdx.x*32;
+                const int by=blockIdx.y*NY;
+                // output patch
+                const int px=threadIdx.x&0x7;
+                const int py=(threadIdx.x>>3)+4*threadIdx.y;
+                const int oy=by+py+iline;
+                if(oy<h && (py+iline)<NY)
+                    reinterpret_cast<float4*>(out+bx+oy*w)[px]=reinterpret_cast<float4*>(s_out+32*py)[px];
+            }
+            __syncthreads();
         }
     }
 
@@ -211,6 +262,21 @@ namespace priv {
         #undef PAYLOAD
     }
 
+    template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int p,const float *k,int nk) {
+        #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
+        /*    PAYLOAD by bz  (ny+2A) | by*bz=8 
+         * u8      16  2  4     128
+         * u16      8  4  2      64
+         * f32      4  8  1      32
+         */
+        dim3 th(32,32/PAYLOAD,PAYLOAD/4);
+        #undef PAYLOAD
+        const int A=(nk-1)/2;
+        const int ny=th.z*32-2*A;
+        dim3 grid((w+31)/32,(h+ny-1)/ny,1);
+        conv_nonunit_stride_k<T><<<grid,th>>>(out,in,w,h,p,k,nk);
+    }
+
     template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int p,float *k,int nk) {        
         CHECK(nk&1==1);
 
@@ -233,9 +299,30 @@ namespace priv {
         
 
         CUTRY(cudaEventRecord(ws->start));
+#if 1
+        conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
+                               self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
+#else
 
-        conv_unit_stride<T,4>(ws->out,reinterpret_cast<T*>(ws->in),
-            self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0]);
+        if(ws->nkernel[0]>0&&ws->nkernel[1]>0) {
+            conv_unit_stride<T,4>(ws->tmp,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0]);
+            conv_nonunit_stride<f32>(ws->out,ws->tmp,
+                                       self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
+        } else if(ws->nkernel[0]>0) {
+            conv_unit_stride<T,4>(ws->out,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0]);
+        } else if(ws->nkernel[1]>0) {
+            conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
+        } else {
+            // nothing to do I guess?
+            // cast to float?
+
+            // TODO
+        }
+#endif
+
 
         CUTRY(cudaEventRecord(ws->stop));
 
