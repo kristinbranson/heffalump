@@ -111,7 +111,7 @@ namespace priv {
         __shared__ float s_out[8*33]; // output buffer for block 
 
         const int A=(nk-1)/2;    // apron size (elems): nk|A :: 3|1, 9|4, 19|9
-        const int P=4*((A+3)/4); // apron aligned to 4
+        //const int P=4*((A+3)/4); // apron aligned to 4
         const int NY=blockDim.z*32-2*A;        
         
         // Load        
@@ -299,7 +299,7 @@ namespace priv {
         
 
         CUTRY(cudaEventRecord(ws->start));
-#if 1
+#if 0
         conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
                                self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
 #else
