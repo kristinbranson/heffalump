@@ -1,6 +1,7 @@
 #include "../hog.h"
 #include "../conv.h"
 #include "gradientHist.h"
+#include <stdlib.h>
 
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -28,7 +29,7 @@ static size_t grad_nbytes(const struct hog_context *self) {
 
 static struct workspace* workspace_init(const struct hog_context *self) {
     const int w=self->w,h=self->h;
-    struct workspace* ws=malloc(sizeof(struct workspace););
+    struct workspace* ws=malloc(sizeof(struct workspace));
     float k[3]={-1,0,1},*ks[]={k,k};
     unsigned nkx[]={3,0},nky[]={0,3};
     ws->dx=conv_init(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
@@ -41,8 +42,8 @@ static struct workspace* workspace_init(const struct hog_context *self) {
                  .h=self->h,
                  .pitch=self->w}, // FIXME: need the real input pitch here
         .nbins=self->params.nbins
-    }
-    GradientHistogramInit(&ws->gh,params,self->logger);
+    };
+    GradientHistogramInit(&ws->gh,&params,self->logger);
     return ws;
 }
 
