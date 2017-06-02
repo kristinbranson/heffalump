@@ -1,11 +1,12 @@
 /// Separable convolution in CUDA
+#include <stdexcept>
 #include <cstdint>
 #include <cuda_runtime.h>
 #include "../conv.h"
 
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {throw cudaGetErrorString(ecode);}} while(0)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)) throw(#e);}while(0)
+#define CHECK(e) do{if(!(e)) throw(std::runtime_error(#e));}while(0)
 
 using namespace std;
 
@@ -111,10 +112,9 @@ namespace priv {
         __shared__ float s_out[8*33]; // output buffer for block 
 
         const int A=(nk-1)/2;    // apron size (elems): nk|A :: 3|1, 9|4, 19|9
-        //const int P=4*((A+3)/4); // apron aligned to 4
-        const int NY=blockDim.z*32-2*A;        
+        const int NY=blockDim.z*32-2*A;  // number of lines processed in this block
         
-        // Load        
+        // Load
         {
             // load origin in the input image (tile+lane offset)
             // block origin
@@ -146,28 +146,35 @@ namespace priv {
         __syncthreads();
         // work and output
         const int y=threadIdx.y+threadIdx.z*blockDim.y; // y will be 0..7
+        // block origin
+        const int bx=blockIdx.x*32;
+        const int by=blockIdx.y*NY;
+        // output patch
+        const int px=threadIdx.x&0x7;
+        const int py=(threadIdx.x>>3)+4*threadIdx.y;
+
         for(int iline=0;iline<NY;iline+=8) {
-            // process 8 lines using 8 warps            
+            
+            const int oy=by+py+iline;
+
+
+            // process 8 lines using 8 warps
             float acc=0.0f;
-            T* lane=v+threadIdx.x+32*(y+iline);
 #if 0 // pass through
             acc=lane[32*A];
 #else
-            for(int i=0;i<nk;++i)
-                acc+=k[i]*lane[i*32];
+            if((y+iline)<NY) {
+                T* lane=v+threadIdx.x+32*(y+iline);
+    
+                for(int i=0;i<nk;++i)
+                    acc+=k[i]*lane[i*32];    
+            }
 #endif
             s_out[threadIdx.x+32*y]=acc;
 
             __syncthreads();
             // output 8 lines using 2 warps
             if(threadIdx.y<2) {
-                // block origin
-                const int bx=blockIdx.x*32;
-                const int by=blockIdx.y*NY;
-                // output patch
-                const int px=threadIdx.x&0x7;
-                const int py=(threadIdx.x>>3)+4*threadIdx.y;
-                const int oy=by+py+iline;
                 if(oy<h && (py+iline)<NY)
                     reinterpret_cast<float4*>(out+bx+oy*w)[px]=reinterpret_cast<float4*>(s_out+32*py)[px];
             }
@@ -350,14 +357,15 @@ struct conv_context conv_init(
 ) {
     struct conv_context self;
     try {
+        auto ws=new priv::workspace(kernel,nkernel,w,h,pitch);
         self.logger=logger;
         self.w=w;
         self.h=h;
         self.pitch=pitch;
-        self.out=nullptr; // this really shouldn't be used here...It's convenient for the cpu impl to avoid copies.
-        self.workspace=new priv::workspace(kernel,nkernel,w,h,self.pitch);
-    } catch(const char* emsg) {
-        ERR(logger,emsg);
+        self.out=ws->out; // device ptr. this really shouldn't be used here?...It's convenient to avoid copies.
+        self.workspace=ws;
+    } catch(const std::runtime_error& e) {
+        ERR(logger,e.what());
     }
     return self;
 }
@@ -366,8 +374,8 @@ void conv_teardown(struct conv_context *self) {
     try {
         auto ws=static_cast<priv::workspace*>(self->workspace);
         delete ws;
-    } catch(const char* emsg) {
-        ERR(self->logger,emsg);
+    } catch(const std::runtime_error& e) {
+        ERR(self->logger,e.what());
     }
 }
 

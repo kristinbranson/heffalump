@@ -86,24 +86,30 @@ void* hog_features_alloc(const struct hog_context *self,void* (*alloc)(size_t nb
 // FIXME: require caller to give buffer size
 void hog_features_copy(const struct hog_context *self, void *buf) {
     struct workspace *ws=(struct workspace*)self->workspace;    
-    GradientHistogramCopyLastResult(ws,buf,features_nbytes(self));
+    GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
 }
 
 
 void hog_features_strides(const struct hog_context *self,struct hog_feature_dims *strides) {
-    struct hog_feature_dims shape;
-    hog_features_shape(self,&shape);
+    struct workspace *ws=(struct workspace*)self->workspace;
+    unsigned sh[3],st[4];
+    GradientHistogramyOutputShape(&ws->gh,sh,st);
+
     *strides=(struct hog_feature_dims) {
-        .x=1,
-        .y=shape.x,
-        .bin=shape.x*shape.y
+        .bin=st[2],
+        .x=st[0],
+        .y=st[1],
     };
 }
 
 void hog_features_shape(const struct hog_context *self,struct hog_feature_dims *shape) {
+    struct workspace *ws=(struct workspace*)self->workspace;
+    unsigned sh[3],st[4];
+    GradientHistogramyOutputShape(&ws->gh,sh,st);
+
     *shape=(struct hog_feature_dims) {
-        .x=self->w/self->params.cell.w,
-        .y=self->h/self->params.cell.h,
-        .bin=self->params.nbins
+        .x=sh[0],
+        .y=sh[1],
+        .bin=sh[2]
     };
 }

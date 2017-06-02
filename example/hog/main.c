@@ -78,6 +78,7 @@ static void* disk(double time) {
     for(int i=0;i<256*256;++i)
         buf[i]*=0.1;
 
+#if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
@@ -98,6 +99,7 @@ static void* disk(double time) {
             }
         }
     }
+#endif
 
 #if 1
     // A disk.  It's important to have a sub-pixel center.
@@ -178,7 +180,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
 
-    hogshow_set_attr(1,params.cell.w,params.cell.h);
+    hogshow_set_attr(4,params.cell.w,params.cell.h);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
@@ -202,9 +204,14 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog_features_shape(&ctx,&shape);
         hog_features_strides(&ctx,&strides);
 
+#if 0
+        autocontrast(out,shape.x*shape.y);
+        imshow(imshow_f32,shape.x,shape.y,out);
+#else
         hogshow(0,0,&shape,&strides,out);
         //hogshow(0,0,8,256/params.cell.w,256/params.cell.h,out);
         imshow(imshow_u8,256,256,input);
+#endif
 
         ++nframes;
     }

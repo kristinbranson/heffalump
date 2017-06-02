@@ -16,181 +16,209 @@
 #include <cuda_runtime.h>
 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
-#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s"); throw std::runtime_error("check failed");}}while(0)
+#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
 namespace priv {
-    struct workspace;
-    using logger_t = void  (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
-    using alloc_t  = void* (*)(size_t nbytes);
-    
-    __device__ int2     operator+(const int2& a,const int2& b)   {return make_int2(a.x+b.x,a.y+b.y);}
-    __device__ int2     operator/(const int2& num,const int den) {return make_int2(num.x/den,num.y/den);}
-    __device__ int2     operator/(const int2& a,const int2& b)   {return make_int2(a.x/b.x,a.y/b.y);}
-    __device__ int2     operator*(const dim3 &a, const int2 &b)  {return make_int2(a.x*b.x,a.y*b.y);}    
-    __device__ int2     operator-(const int2 &a,const int2 &b)   {return make_int2(a.x-b.x,a.y-b.y);}
-    __device__ unsigned dot(uint3 a, dim3 b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
-    __device__ float    frac(float v) {return v-truncf(v);}
-    __device__ int2     to_coord(const int& i,const int& w)      {return make_int2(i%w,i/w);}
-    __device__ int      to_index(const int2& r, const int& w)    {return r.x+w*r.y;}
-    __device__ bool     in_bounds(const int2 &r, const int2& sz) {return r.x>0 && r.y>0 && r.x<sz.x && r.y<sz.y;}
-    __device__ int2     to_xy(const dim3& a)                     {return make_int2(a.x,a.y);}
+    namespace gradient_histogram {
+        struct workspace;
+        using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
+        using alloc_t=void* (*)(size_t nbytes);
 
-    __device__ float2 operator+(const int2& a,const float& b)    {return make_float2(a.x+b,a.y+b);}
-    __device__ float2 operator*(const float2 &a, const int2 &b)  {return make_float2(a.x*b.x,a.y*b.y);}
-    __device__ float2 operator*(const float &a,const float2 &b)  {return make_float2(a*b.x,a*b.y);}
-    __device__ float2 operator-(const float2 &a, const float2 &b){return make_float2(a.x-b.x,a.y-b.y);}
-    __device__ float2 operator-(const int2 &a, const float2 &b)  {return make_float2(a.x-b.x,a.y-b.y);}
-    __device__ float2 operator-(const float  &a, const float2 &b){return make_float2(a-b.x,a-b.y);}
-    __device__ float2 operator/(const float2& a,const int2& b)   {return make_float2(a.x/b.x,a.y/b.y);}
+        // TODO: does it make a difference whether I take these by reference or not?
+        __device__ bool in_bounds(const int &x, const int &y,const int& w, const int& h) { return x>=0&&y>=0&&x<w&&y<h; }        
+        __device__ float fpartf(const float f) { return f-floorf(f); }
 
-    __device__ float2 abs(const float2& a)                       {return make_float2(fabsf(a.x),fabsf(a.y));}
-    __device__ float  prod(const float2& a)                      {return a.x*a.y;}
-
-    template<int MAX_NBINS, int BY>
-    __global__ void gradhist_k(
-        float * __restrict__ out,
-        const float * __restrict__ dx,
-        const float * __restrict__ dy,
-        int2 image_size,
-        int p,
-        int nbins,
-        int2 cell_size,
-        float norm) 
-    {        
-        const int2 A=cell_size/2;               // one-sided apron size
-        const int2 support=cell_size+A;         // input support size for cell
-        const auto idx=dot(threadIdx,blockDim); // job id
-        // Load
-        const int2 r0=blockIdx*cell_size-A;        // top left of support
-        const int2 rlocal=to_coord(idx,support.x); // current sample position relative to top-left of block
-        const int2 r=r0+rlocal;                    // current sample position relative to input origin         
-        
-        float hist[MAX_NBINS];
-        for(int i=0;i<nbins;++i) hist[i]=0.0f;
-
-        if(in_bounds(r,image_size)) {
-            const auto i=to_index(r,p);
-            const float x=dx[i];
-            const float y=dy[i];
-            const float o=(nbins/6.28318530718f)*atan2(y,x); // angle is mapped to bins
-            const float m=(x*x+y*y)*norm;
-            const int   io=o;
-            const float delta=o-io;
-            // weights for trilinear (softmax)        
-            const float2 center=make_float2(1.0f,1.0f);
-            const float overlap=prod(1.0f-abs((rlocal/cell_size)-center));
-            const float2 w=overlap*m*make_float2(delta,1.0f-delta);
-            hist[io]+=w.x;
-            hist[io+1]+=w.y;
-        }
-        
-        // aggregate and output histograms for the block
-        __shared__ float v[BY];
-        float * const o=out+nbins*(blockDim.x+blockDim.y*gridDim.x);
-        // warp sum
-        for(int j=16;j>=1;j>>=1)
-            for(int i=0;i<nbins;++i)
-                hist[i]+=__shfl_down(hist[i],j);                    
-        // block sum
-        for(int i=0;i<nbins;++i) {
-            if(threadIdx.x==0) v[threadIdx.y]=hist[i];
-            __syncthreads();
-            // warp sum to reduce block
-            float s=(threadIdx.x<blockDim.y)?v[threadIdx.x]:0.0f;
-            for(int j=16;j>=1;j>>=1)
-                s+=__shfl_down(s,j);
-            // Output the bin
-            if(threadIdx.x==0)
-                o[i]=s;
-        }    
-    }
-
-    struct workspace {
-        workspace(const struct gradientHistogramParameters* params, priv::logger_t logger) 
-        : logger(logger) 
-        , params(*params) // grab a copy
+        template<int MAX_NBINS,int BY>
+        __global__ void gradhist_k(
+            float * __restrict__ out,
+            const float * __restrict__ dx,
+            const float * __restrict__ dy,
+            int w,int h,
+            int p,
+            int nbins,
+            int2 cell_size,
+            float norm) 
         {
-            CUTRY(logger,cudaMalloc(&out,result_nbytes()));
-            CUTRY(logger,cudaMalloc(&dx,input_nbytes()));
-            CUTRY(logger,cudaMalloc(&dy,input_nbytes()));
+            const int Ax=cell_size.x/2;             // one-sided apron size
+            const int Ay=cell_size.y/2;
+            const int support_x=cell_size.x+2*Ax;   // input support size for cell
+            const int support_y=cell_size.y+2*Ay;
+            const auto idx=threadIdx.x+threadIdx.y*blockDim.x; // job id
+            // Load
+            const int r0x=blockIdx.x*cell_size.x-Ax;  // top left of support
+            const int r0y=blockIdx.y*cell_size.y-Ay;
+            const int rlocal_x=idx%support_x;         // current sample position relative to top-left of support
+            const int rlocal_y=idx/support_x;
+            const int rx=r0x+rlocal_x;                // current input sample position 
+            const int ry=r0y+rlocal_y;
+            
+                const int bx=r0x+support_x;
+                const int by=r0y+support_y;
+                const float nitems_inbounds=
+                     float(support_x+((rx<0)?rx:0)-((bx>=w)?(bx-w):0))
+                    *float(support_y+((ry<0)?ry:0)-((by>=h)?(by-h):0));
+                norm/=nitems_inbounds;
+            
+
+            float hist[MAX_NBINS];
+            for(int i=0;i<nbins;++i) hist[i]=0.0f;
+
+            if(in_bounds(rx,ry,w,h)) {
+                const auto i=rx+ry*p;
+                const float x=dx[i];
+                const float y=dy[i];
+                const float th=nbins*fpartf((0.15915494309f*atan2f(y,x))+0.5f); // angle is mapped to bins
+                const float m=sqrtf(x*x+y*y);
+                const float delta=fpartf(th)-0.5f; // distance from bin center
+                const int   ith=th;
+                // weights for trilinear (softmax)        
+                // The center of the cell is at 1 (after norming for cell size)
+                // rlocal/cellsize-1  is the delta from the center fo the cell
+                // rlocal/cellsize    varies from 0 to 2
+                // so 1-delta varies from -1 to 1
+
+                /*
+                 *
+                 * FIXME: Norm isn't right.  stil looks a bit shakey
+                 */
+
+
+
+                const float wm=m // bilinear weighted magnitude
+                    *(1.0f-fabs(rlocal_x/float(cell_size.x)-1.0f))
+                    *(1.0f-fabs(rlocal_y/float(cell_size.y)-1.0f));
+                hist[ith  ]+=wm*(1.0f-delta);       // softbin - weighted values
+                hist[ith+1]+=wm*delta;
+            }
+
+            // aggregate and output histograms for the block.
+            // write a (cell.w x cell.h) plane for each bin.
+            // bins are the outer dimension.
+            
+            float * o=out+blockIdx.x+blockIdx.y*gridDim.x;
+            const auto bin_stride=gridDim.x*gridDim.y;
+#if 0
+            *o=1; // check output domain
+#else
+            const auto ncell=support_x*support_y;
+            //for(auto iwork=0;iwork<ncell;iwork+=1024) { 
+                // each iter sums 32x32 elements for each bin
+                // FIXME: summing more requires use of some more cleverness than is in here at the moment
+                __shared__ float v[BY];            
+                // warp sum
+                for(int j=16;j>=1;j>>=1)
+                    for(int i=0;i<nbins;++i)
+                        hist[i]+=__shfl_down(hist[i],j);
+
+                // block sum
+                for(int i=0;i<nbins;++i) {
+                    if(threadIdx.x==0) v[threadIdx.y]=hist[i];
+                    __syncthreads();
+                    // warp sum to reduce block
+                    float s=((32*threadIdx.x)<ncell)?v[threadIdx.x]:0.0f;
+                    for(int j=16;j>=1;j>>=1)
+                        s+=__shfl_down(s,j);
+                    __syncthreads();
+                    // Output the bin
+                    if(threadIdx.x==0&&threadIdx.y==0)
+                        o[i*bin_stride]=s*norm;
+                }
+            //}
+#endif
         }
 
-        ~workspace() {
-            CUTRY(logger,cudaFree(out));
-            CUTRY(logger,cudaFree(dx));
-            CUTRY(logger,cudaFree(dy));
-        }
+        struct workspace {
+            workspace(const struct gradientHistogramParameters* params,priv::gradient_histogram::logger_t logger)
+                : logger(logger)
+                ,params(*params) // grab a copy
+            {
+                CUTRY(logger,cudaMalloc(&out,result_nbytes()));
+                CUTRY(logger,cudaMalloc(&dx,input_nbytes()));
+                CUTRY(logger,cudaMalloc(&dy,input_nbytes()));
+            }
 
-        int2  image_size() const { return make_int2(params.image.w,params.image.h); }
-        int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
-        float cell_norm()  const { auto v=cell_size(); return 1.0f/(v.x*v.x+v.y*v.y); }
+            ~workspace() {
+                CUTRY(logger,cudaFree(out));
+                CUTRY(logger,cudaFree(dx));
+                CUTRY(logger,cudaFree(dy));
+            }
 
-        void compute(const float *dx, const float *dy) {
-            // Each block will be responsible for computing the histogram for
-            // one cell.
-            // Block input:  a 2*cell.w x 2*cell.h region about the cell center.
-            // Block output: a nbin floating-point histogram.
-            //
-            // The block processes input more or less linearly, though sometimes
-            // it has to stride across the input.
-            dim3 block(32,4); // th.y can be chosen to maximize occupancy. th.x and th.y separate to simplify keeping of warps/lanes
-            #define CEIL(num,den) ((num+den-1)/den)
-            dim3 grid(
-                CEIL(params.image.w,params.cell.w),
-                CEIL(params.image.h,params.cell.h));
-            CHECK(logger,params.nbins<16);
-            CHECK(logger,block.y<32);
-            priv::gradhist_k<16,32><<<grid,block>>>(out,dx,dy,
-                image_size(),
-                params.image.pitch,params.nbins,
-                cell_size(),
-                cell_norm());
-            #undef CEIL
-        }
+            int2  image_size() const { return make_int2(params.image.w,params.image.h); }
+            int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
+            float cell_norm()  const {
+                return 1.0f; // sum this many elements in the support for the cell
+            }
 
-        void* alloc_output(priv::alloc_t alloc) {
-            return alloc(result_nbytes());
-        }
+            void compute(const float *dx,const float *dy) {
+                // Each block will be responsible for computing the histogram for
+                // one cell.
+                // Block input:  a 2*cell.w x 2*cell.h region about the cell center.
+                //               The thread block is sized to process the input region.
+                // Block output: a nbin floating-point histogram.
+                //
+                // The block processes input more or less linearly, though sometimes
+                // it has to stride across the input.
+#define CEIL(num,den) ((num+den-1)/den)
+                const unsigned cell_nelem=4*params.cell.w*params.cell.h;
+                dim3 block(32,CEIL(cell_nelem,32));
+                dim3 grid(
+                    CEIL(params.image.w,params.cell.w),
+                    CEIL(params.image.h,params.cell.h));
+#undef CEIL
+                CHECK(logger,params.nbins<=16);
+                CHECK(logger,block.y<=32);   // FIXME: adapt for cells larger than 16x16
+                priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,dx,dy,
+                                                                            params.image.w,params.image.h,
+                                                                            params.image.pitch,params.nbins,
+                                                                            cell_size(),
+                                                                            cell_norm());
+            }
 
-        void copy_last_result(void *buf,size_t nbytes) {
-            //CHECK(logger,result_nbytes<nbytes);
-            CUTRY(logger,cudaMemcpy(buf,out,result_nbytes(),cudaMemcpyDeviceToHost));
-        }
+            void* alloc_output(priv::gradient_histogram::alloc_t alloc) const {
+                return alloc(result_nbytes());
+            }
 
-        void output_shape(unsigned shape[3],unsigned strides[4]) {
-            shape[0]=params.nbins;
-            shape[1]=params.image.w;
-            shape[2]=params.image.h;
-            strides[0]=1;
-            strides[0]=shape[0];
-            for(int i=1;i<4;++i)
-                strides[i]=shape[i]*strides[i-1];
-        }
+            void copy_last_result(void *buf,size_t nbytes) const {
+                //CHECK(logger,result_nbytes<nbytes);
+                CUTRY(logger,cudaMemcpy(buf,out,result_nbytes(),cudaMemcpyDeviceToHost));
+            }
 
-    private:
-        /// @returns the number of bytes in an input image.
-        /// Both dx and dy must have this number of bytes.
-        /// This ends up getting allocated and copied to 
-        /// move the data to the GPU.
-        size_t input_nbytes() {
-            return params.image.pitch*params.image.h*sizeof(float);
-        }
+            void output_shape(unsigned shape[3],unsigned strides[4]) const {
+#define CEIL(num,den) ((num+den-1)/den)
+                shape[0]=CEIL(params.image.w,params.cell.w);
+                shape[1]=CEIL(params.image.h,params.cell.h);
+                shape[2]=params.nbins;
+#undef CEIL
+                strides[0]=1;
+                for(auto i=1;i<4;++i)
+                    strides[i]=shape[i-1]*strides[i-1];
+            }
 
-        /// @returns the number of bytes in the output buffer
-        size_t result_nbytes() {
-            unsigned shape[3],strides[4];
-            output_shape(shape,strides);
-            return strides[3]*sizeof(float);
-        }
+        private:
+            /// @returns the number of bytes in an input image.
+            /// Both dx and dy must have this number of bytes.
+            /// This ends up getting allocated and copied to 
+            /// move the data to the GPU.
+            size_t input_nbytes() const {
+                return params.image.pitch*params.image.h*sizeof(float);
+            }
 
-        priv::logger_t logger;
-        struct gradientHistogramParameters params;
+            /// @returns the number of bytes in the output buffer
+            size_t result_nbytes() const {
+                unsigned shape[3],strides[4];
+                output_shape(shape,strides);
+                return strides[3]*sizeof(float);
+            }
 
-        // device pointers
-        float *out,*dx,*dy;        
-    };
+            priv::gradient_histogram::logger_t logger;
+            struct gradientHistogramParameters params;
 
+            // device pointers
+            float *out,*dx,*dy;
+        };
+
+    }
 }
 
 extern "C" {
@@ -201,12 +229,12 @@ extern "C" {
     void GradientHistogramInit(struct gradientHistogram* self, 
                                const struct gradientHistogramParameters *param,
                                void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {        
+        self->workspace=nullptr;
         try {
             // Assert requirements
             CHECK(logger,param->cell.w<param->image.w);
             CHECK(logger,param->cell.h<param->image.h);
-
-            self->workspace=new priv::workspace(param,logger);
+            self->workspace=new priv::gradient_histogram::workspace(param,logger);
         }  catch(const std::bad_alloc& e) {
             ERR(logger,"Allocation failed: %s",e.what());
         } catch(...) {
@@ -214,7 +242,7 @@ extern "C" {
         }
     }
 
-#define WORKSPACE ((priv::workspace*)(self->workspace))
+#define WORKSPACE ((priv::gradient_histogram::workspace*)(self->workspace))
 
     void GradientHistogramDestroy(struct gradientHistogram* self) {
         delete WORKSPACE;
