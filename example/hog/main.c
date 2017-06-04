@@ -76,7 +76,7 @@ static void* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.1;
+        buf[i]*=0.0;
 
 #if 1
     // A disk.  It's important to have a sub-pixel center.
@@ -204,7 +204,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog_features_shape(&ctx,&shape);
         hog_features_strides(&ctx,&strides);
 
-#if 0
+#if 1
         autocontrast(out,shape.x*shape.y);
         imshow(imshow_f32,shape.x,shape.y,out);
 #else

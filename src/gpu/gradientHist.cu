@@ -55,10 +55,10 @@ namespace priv {
             
                 const int bx=r0x+support_x;
                 const int by=r0y+support_y;
-                const float nitems_inbounds=
-                     float(support_x+((rx<0)?rx:0)-((bx>=w)?(bx-w):0))
-                    *float(support_y+((ry<0)?ry:0)-((by>=h)?(by-h):0));
-                norm/=nitems_inbounds;
+                const float noob_x=((rx<0)?rx:0)-((bx>=w)?(bx-w):0); // number out-of-bounds x
+                const float noob_y=((ry<0)?ry:0)-((by>=h)?(by-h):0); // number out-of-bounds y
+                norm/=(cell_size.x-noob_x*noob_x/2.0/float(cell_size.x))
+                     *(cell_size.y-noob_y*noob_y/2.0/float(cell_size.y));
             
 
             float hist[MAX_NBINS];
@@ -82,12 +82,10 @@ namespace priv {
                  *
                  * FIXME: Norm isn't right.  stil looks a bit shakey
                  */
-
-
-
                 const float wm=m // bilinear weighted magnitude
-                    *(1.0f-fabs(rlocal_x/float(cell_size.x)-1.0f))
-                    *(1.0f-fabs(rlocal_y/float(cell_size.y)-1.0f));
+                    *(1.0f-fabs((rlocal_x+0.5)/float(cell_size.x)-1.0f))
+                    *(1.0f-fabs((rlocal_y+0.5)/float(cell_size.y)-1.0f))
+                ;
                 hist[ith  ]+=wm*(1.0f-delta);       // softbin - weighted values
                 hist[ith+1]+=wm*delta;
             }
@@ -97,8 +95,7 @@ namespace priv {
             // bins are the outer dimension.
             
             float * o=out+blockIdx.x+blockIdx.y*gridDim.x;
-            const auto bin_stride=gridDim.x*gridDim.y;
-#if 0
+#if 1
             *o=1; // check output domain
 #else
             const auto ncell=support_x*support_y;
@@ -147,7 +144,7 @@ namespace priv {
             int2  image_size() const { return make_int2(params.image.w,params.image.h); }
             int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
             float cell_norm()  const {
-                return 1.0f; // sum this many elements in the support for the cell
+                return 1.0f; // FIXME: don't need this
             }
 
             void compute(const float *dx,const float *dy) {
@@ -166,6 +163,11 @@ namespace priv {
                     CEIL(params.image.w,params.cell.w),
                     CEIL(params.image.h,params.cell.h));
 #undef CEIL
+                { 
+                    int ndev=0;
+                    CUTRY(logger,cudaGetDeviceCount(&ndev));
+                    CHECK(logger,ndev>=0);
+                }
                 CHECK(logger,params.nbins<=16);
                 CHECK(logger,block.y<=32);   // FIXME: adapt for cells larger than 16x16
                 priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,dx,dy,
@@ -173,6 +175,7 @@ namespace priv {
                                                                             params.image.pitch,params.nbins,
                                                                             cell_size(),
                                                                             cell_norm());
+                CUTRY(logger,cudaDeviceSynchronize());
             }
 
             void* alloc_output(priv::gradient_histogram::alloc_t alloc) const {
