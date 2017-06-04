@@ -19,7 +19,8 @@
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
-namespace priv {
+namespace priv {      
+
     namespace gradient_histogram {
         struct workspace;
         using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
@@ -28,19 +29,47 @@ namespace priv {
         // TODO: does it make a difference whether I take these by reference or not?
         __device__ bool in_bounds(const int &x, const int &y,const int& w, const int& h) { return x>=0&&y>=0&&x<w&&y<h; }        
         __device__ float fpartf(const float f) { return f-floorf(f); }
+        
+        __global__ void oriented_magnitudes_k(
+            float * __restrict__ mag,
+            float * __restrict__ theta_bin,
+            const float * __restrict__ dx,
+            const float * __restrict__ dy,
+            int w,int h, int p,
+            int nbins) 
+        {
+            const int ix=threadIdx.x+blockIdx.x*blockDim.x;
+            const int iy=threadIdx.y+blockIdx.y*blockDim.y;
+            if(ix<w && iy<h) {
+                const float x=dx[ix+iy*p];
+                const float y=dy[ix+iy*p];
+                theta_bin[ix+iy*w]=nbins*fpartf((0.15915494309f*atan2f(y,x))+0.5f); // angle is mapped to bins
+                mag[ix+iy*w]=sqrtf(x*x+y*y);
+            }
+        }
+
+        
+        /// (rx,ry) are the current sample position
+        ///         should be the same as r0x,r0y since this is only used by thread (0,0)
+        /// (bx,by) are the max (x,y) of the cell support (bottom right corner)
+        /// (w,h)   are the width and height of the input image 
+        __device__ float cellnorm(float rx, float ry,float bx,float by,int w,int h,float ncx, float ncy) {
+            const float noob_x=((bx>=w)?(bx-w):0)-((rx<0)?rx:0); // number out-of-bounds x
+            const float noob_y=((by>=h)?(by-h):0)-((ry<0)?ry:0); // number out-of-bounds y
+            return 1.0f/((ncx-noob_x*noob_x/2.0/ncx)
+                        *(ncy-noob_y*noob_y/2.0/ncy));
+        }
 
         template<int MAX_NBINS,int BY>
         __global__ void gradhist_k(
             float * __restrict__ out,
-            const float * __restrict__ dx,
-            const float * __restrict__ dy,
-            int w,int h,
-            int p,
-            int nbins,
+            const float * __restrict__ mag,
+            const float * __restrict__ theta_bins,
+            int w,int h,int nbins,
             int2 cell_size) 
         {
-            const int Ax=cell_size.x/2;             // one-sided apron size
-            const int Ay=cell_size.y/2;
+            #define Ax (cell_size.x/2);             // one-sided apron size
+            #define Ay (cell_size.y/2);
             const int support_x=cell_size.x+2*Ax;   // input support size for cell
             const int support_y=cell_size.y+2*Ay;
             const auto idx=threadIdx.x+threadIdx.y*blockDim.x; // job id
@@ -52,33 +81,16 @@ namespace priv {
             const int rx=r0x+rlocal_x;                // current input sample position 
             const int ry=r0y+rlocal_y;
 
-            float norm=1.0f;
-            {
-                const int bx=r0x+support_x;
-                const int by=r0y+support_y;
-                const float noob_x=((bx>=w)?(bx-w):0)-((rx<0)?rx:0); // number out-of-bounds x
-                const float noob_y=((by>=h)?(by-h):0)-((ry<0)?ry:0); // number out-of-bounds y
-                const float nx=cell_size.x;
-                const float ny=cell_size.y;
-                norm/=(nx-noob_x*noob_x/2.0/nx)
-                     *(ny-noob_y*noob_y/2.0/ny);
-                        ;
-//            norm/=16*16;
-            }
-            
+            const float ncx=cell_size.x;
+            const float ncy=cell_size.y;
 
             float hist[MAX_NBINS];
             for(int i=0;i<nbins;++i) hist[i]=0.0f;
 
             if(in_bounds(rx,ry,w,h)) {
-                const auto i=rx+ry*p;
-                const float x=dx[i];
-                const float y=dy[i];
-                const float th=nbins*fpartf((0.15915494309f*atan2f(y,x))+0.5f); // angle is mapped to bins
-                const float m=sqrtf(x*x+y*y);
-                const float delta=fpartf(th)-0.5f; // distance from bin center
-                const int   ith=th;
-                // weights for trilinear (softmax)        
+                const float th=theta_bins[rx+ry*w];
+                const float m =mag[rx+ry*w];
+                // weights for trilinear (softmax)
                 // The center of the cell is at 1 (after norming for cell size)
                 // rlocal/cellsize-1  is the delta from the center fo the cell
                 // rlocal/cellsize    varies from 0 to 2
@@ -88,11 +100,19 @@ namespace priv {
                  * FIXME: stil looks a bit shakey
                  */
                 const float wm=m // bilinear weighted magnitude
-                    *(1.0f-fabs((rlocal_x+0.5)/float(cell_size.x)-1.0f))
-                    *(1.0f-fabs((rlocal_y+0.5)/float(cell_size.y)-1.0f))
+                    *(1.0f-fabs((rlocal_x+0.5f)/ncx-1.0f))
+                    *(1.0f-fabs((rlocal_y+0.5f)/ncy-1.0f))
                 ;
-                hist[ith  ]+=wm*(1.0f-delta);       // softbin - weighted values
-                hist[ith+1]+=wm*delta;
+
+                const float delta=fpartf(th)-0.5f; // distance from bin center
+                const int   ith=th;
+                if(delta>0) { // softbin - weighted values
+                    hist[ith  ]+=wm*(1.0f-delta);
+                    hist[(ith+1)%nbins]+=wm*delta;
+                } else {
+                    hist[ith  ]+=wm*(1.0f+delta);
+                    hist[(ith-1)%nbins]-=wm*delta;
+                }
             }
 
             // aggregate and output histograms for the block.
@@ -125,7 +145,7 @@ namespace priv {
                     __syncthreads();
                     // Output the bin
                     if(threadIdx.x==0&&threadIdx.y==0)
-                        o[i*bin_stride]=s*norm;
+                        o[i*bin_stride]=s*cellnorm(rx,ry,r0x+support_x,r0y+support_y,w,h,ncx,ncy);
                 }
             //}
 #endif
@@ -139,19 +159,20 @@ namespace priv {
                 CUTRY(logger,cudaMalloc(&out,result_nbytes()));
                 CUTRY(logger,cudaMalloc(&dx,input_nbytes()));
                 CUTRY(logger,cudaMalloc(&dy,input_nbytes()));
+                CUTRY(logger,cudaMalloc(&mag,intermediate_image_nbytes()));
+                CUTRY(logger,cudaMalloc(&theta,intermediate_image_nbytes()));
             }
 
             ~workspace() {
                 CUTRY(logger,cudaFree(out));
                 CUTRY(logger,cudaFree(dx));
                 CUTRY(logger,cudaFree(dy));
+                CUTRY(logger,cudaFree(mag));
+                CUTRY(logger,cudaFree(theta));
             }
 
             int2  image_size() const { return make_int2(params.image.w,params.image.h); }
             int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
-            float cell_norm()  const {
-                return 1.0f; // FIXME: don't need this
-            }
 
             void compute(const float *dx,const float *dy) {
                 // Each block will be responsible for computing the histogram for
@@ -164,24 +185,30 @@ namespace priv {
                 // it has to stride across the input.
 #define CEIL(num,den) ((num+den-1)/den)
                 const unsigned cell_nelem=4*params.cell.w*params.cell.h;
-                dim3 block(32,CEIL(cell_nelem,32));
-                dim3 grid(
-                    CEIL(params.image.w,params.cell.w),
-                    CEIL(params.image.h,params.cell.h));
-#undef CEIL
-                { 
-                    int ndev=0;
-                    CUTRY(logger,cudaGetDeviceCount(&ndev));
-                    CHECK(logger,ndev>=0);
+
+                {
+                    dim3 block(32,8);
+                    dim3 grid(
+                        CEIL(params.image.w,block.x),
+                        CEIL(params.image.h,block.y));
+                    priv::gradient_histogram::oriented_magnitudes_k<<<grid,block>>>(mag,theta,dx,dy,
+                                                                    params.image.w,params.image.h,
+                                                                    params.image.pitch,params.nbins);
+                    CUTRY(logger,cudaGetLastError());
                 }
-                CHECK(logger,params.nbins<=16);
-                CHECK(logger,block.y<=32);   // FIXME: adapt for cells larger than 16x16
-                priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,dx,dy,
-                                                                            params.image.w,params.image.h,
-                                                                            params.image.pitch,params.nbins,
-                                                                            cell_size());
-                //CUTRY(logger,cudaDeviceSynchronize());
-                CUTRY(logger,cudaGetLastError());
+                {
+                    dim3 block(32,CEIL(cell_nelem,32));
+                    dim3 grid(
+                        CEIL(params.image.w,params.cell.w),
+                        CEIL(params.image.h,params.cell.h));
+                    CHECK(logger,block.y<=32);      // FIXME: adapt for cells larger than 16x16
+                    CHECK(logger,params.nbins<=16);
+                    priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,mag,theta,
+                                                                                params.image.w,params.image.h,
+                                                                                params.nbins,cell_size());
+                    CUTRY(logger,cudaGetLastError());
+                }
+#undef CEIL
             }
 
             void* alloc_output(priv::gradient_histogram::alloc_t alloc) const {
@@ -190,7 +217,10 @@ namespace priv {
 
             void copy_last_result(void *buf,size_t nbytes) const {
                 //CHECK(logger,result_nbytes<nbytes);
+
                 CUTRY(logger,cudaMemcpy(buf,out,result_nbytes(),cudaMemcpyDeviceToHost));
+//                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+//                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
             }
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const {
@@ -202,6 +232,11 @@ namespace priv {
                 strides[0]=1;
                 for(auto i=1;i<4;++i)
                     strides[i]=shape[i-1]*strides[i-1];
+            }
+
+            size_t intermediate_image_nbytes() const {
+                int2 s=image_size();
+                return s.x*s.y*sizeof(float);
             }
 
         private:
@@ -224,7 +259,7 @@ namespace priv {
             struct gradientHistogramParameters params;
 
             // device pointers
-            float *out,*dx,*dy;
+            float *out,*dx,*dy,*mag,*theta;
         };
 
     }

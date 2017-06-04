@@ -61,14 +61,13 @@ static char* delta() {
 }
 
 static void* disk(double time) {
-//    static char *buf=0;
     static float *out=0;
     static struct conv_context ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={3,3};
     if(!out) {
-        ctx=conv_init(logger,256,256,256,ks,nks);        
+        ctx=conv_init(logger,256,256,256,ks,nks);
         out=conv_alloc(&ctx,malloc);
     }
 
@@ -78,7 +77,7 @@ static void* disk(double time) {
     for(int i=0;i<256*256;++i)
         buf[i]*=0.1;
 
-#if 0 // all disks
+#if 1 // all disks
 #if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -173,16 +172,13 @@ static void autocontrast(const float *out,int n) {
 
 }
 
-//void hogshow(float x,float y,int nbins,int ncellw,int ncellh,const void *data);
-//void hogshow_set_attr(float scale,float cellw,float cellh);
-
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
 
-    hogshow_set_attr(4,params.cell.w,params.cell.h);
+    hogshow_set_attr(1,params.cell.w,params.cell.h);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
