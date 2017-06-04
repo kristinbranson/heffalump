@@ -76,8 +76,9 @@ static void* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.0;
+        buf[i]*=0.1;
 
+#if 0 // all disks
 #if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -146,6 +147,7 @@ static void* disk(double time) {
         }
     }
 #endif
+#endif // all disks
 
 #if 1
     memcpy(out,buf,256*256); // make a copy so we don't get flashing (imshow input isn't buffered)
@@ -204,7 +206,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog_features_shape(&ctx,&shape);
         hog_features_strides(&ctx,&strides);
 
-#if 1
+#if 0
         autocontrast(out,shape.x*shape.y);
         imshow(imshow_f32,shape.x,shape.y,out);
 #else

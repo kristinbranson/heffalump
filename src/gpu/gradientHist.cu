@@ -17,7 +17,7 @@
 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
-#define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
 namespace priv {
     namespace gradient_histogram {
@@ -37,8 +37,7 @@ namespace priv {
             int w,int h,
             int p,
             int nbins,
-            int2 cell_size,
-            float norm) 
+            int2 cell_size) 
         {
             const int Ax=cell_size.x/2;             // one-sided apron size
             const int Ay=cell_size.y/2;
@@ -52,13 +51,20 @@ namespace priv {
             const int rlocal_y=idx/support_x;
             const int rx=r0x+rlocal_x;                // current input sample position 
             const int ry=r0y+rlocal_y;
-            
+
+            float norm=1.0f;
+            {
                 const int bx=r0x+support_x;
                 const int by=r0y+support_y;
-                const float noob_x=((rx<0)?rx:0)-((bx>=w)?(bx-w):0); // number out-of-bounds x
-                const float noob_y=((ry<0)?ry:0)-((by>=h)?(by-h):0); // number out-of-bounds y
-                norm/=(cell_size.x-noob_x*noob_x/2.0/float(cell_size.x))
-                     *(cell_size.y-noob_y*noob_y/2.0/float(cell_size.y));
+                const float noob_x=((bx>=w)?(bx-w):0)-((rx<0)?rx:0); // number out-of-bounds x
+                const float noob_y=((by>=h)?(by-h):0)-((ry<0)?ry:0); // number out-of-bounds y
+                const float nx=cell_size.x;
+                const float ny=cell_size.y;
+                norm/=(nx-noob_x*noob_x/2.0/nx)
+                     *(ny-noob_y*noob_y/2.0/ny);
+                        ;
+//            norm/=16*16;
+            }
             
 
             float hist[MAX_NBINS];
@@ -76,11 +82,10 @@ namespace priv {
                 // The center of the cell is at 1 (after norming for cell size)
                 // rlocal/cellsize-1  is the delta from the center fo the cell
                 // rlocal/cellsize    varies from 0 to 2
-                // so 1-delta varies from -1 to 1
 
                 /*
                  *
-                 * FIXME: Norm isn't right.  stil looks a bit shakey
+                 * FIXME: stil looks a bit shakey
                  */
                 const float wm=m // bilinear weighted magnitude
                     *(1.0f-fabs((rlocal_x+0.5)/float(cell_size.x)-1.0f))
@@ -95,9 +100,10 @@ namespace priv {
             // bins are the outer dimension.
             
             float * o=out+blockIdx.x+blockIdx.y*gridDim.x;
-#if 1
+#if 0
             *o=1; // check output domain
 #else
+            const auto bin_stride=gridDim.x*gridDim.y;
             const auto ncell=support_x*support_y;
             //for(auto iwork=0;iwork<ncell;iwork+=1024) { 
                 // each iter sums 32x32 elements for each bin
@@ -173,9 +179,9 @@ namespace priv {
                 priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,dx,dy,
                                                                             params.image.w,params.image.h,
                                                                             params.image.pitch,params.nbins,
-                                                                            cell_size(),
-                                                                            cell_norm());
-                CUTRY(logger,cudaDeviceSynchronize());
+                                                                            cell_size());
+                //CUTRY(logger,cudaDeviceSynchronize());
+                CUTRY(logger,cudaGetLastError());
             }
 
             void* alloc_output(priv::gradient_histogram::alloc_t alloc) const {
