@@ -204,9 +204,17 @@ namespace priv {
                         CEIL(params.image.h,params.cell.h));
                     CHECK(logger,block.y<=32);      // FIXME: adapt for cells larger than 16x16
                     CHECK(logger,params.nbins<=16);
-                    priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,mag,theta,
-                                                                                params.image.w,params.image.h,
-                                                                                params.nbins,cell_size());
+                    if(params.nbins<=8) {
+                        priv::gradient_histogram::gradhist_k<8,32><<<grid,block>>>(out,mag,theta,
+                                                                                    params.image.w,params.image.h,
+                                                                                    params.nbins,cell_size());
+                    } else if(params.nbins<=16) {
+                        priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,mag,theta,
+                                                                                    params.image.w,params.image.h,
+                                                                                    params.nbins,cell_size());
+                    } else {
+                        throw std::runtime_error("Unsupported number of histogram bins.");
+                    }
                     CUTRY(logger,cudaGetLastError());
                 }
 #undef CEIL
