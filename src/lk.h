@@ -27,15 +27,11 @@ struct lk_parameters {
     } sigma;
 };
 
-#include "conv.h"
 struct lk_context {
-    void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
-    enum lk_scalar_type type;
+    void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);    
     unsigned w,h;
-    int pitch;
     float *result; // device mem - output
-    struct conv_context smooth,dx,dy;
-    void *workspace;
+    void  *workspace;
 };
 
 /** Initializes a context.
@@ -67,7 +63,7 @@ struct lk_context lk_init(
 void lk_teardown(struct lk_context *self);
 
 /** Performs Lukas-Kanade.
- *
+ 
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `lk_alloc` and `lk_copy` functions.
 
