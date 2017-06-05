@@ -54,10 +54,10 @@ namespace priv {
         /// (bx,by) are the max (x,y) of the cell support (bottom right corner)
         /// (w,h)   are the width and height of the input image 
         __device__ float cellnorm(float rx, float ry,float bx,float by,int w,int h,float ncx, float ncy) {
-            const float noob_x=((bx>=w)?(bx-w):0)-((rx<0)?rx:0); // number out-of-bounds x
-            const float noob_y=((by>=h)?(by-h):0)-((ry<0)?ry:0); // number out-of-bounds y
-            return 1.0f/((ncx-noob_x*noob_x/2.0/ncx)
-                        *(ncy-noob_y*noob_y/2.0/ncy));
+            const float noob_x=((bx>=w)?(bx-w):0.0f)-((rx<0.0f)?rx:0.0f); // number out-of-bounds x
+            const float noob_y=((by>=h)?(by-h):0.0f)-((ry<0.0f)?ry:0.0f); // number out-of-bounds y
+            return 1.0f/((ncx-0.5f*noob_x*noob_x/ncx)
+                         *(ncy-0.5f*noob_y*noob_y/ncy));
         }
 
         template<int MAX_NBINS,int BY>
@@ -100,8 +100,8 @@ namespace priv {
                  * FIXME: stil looks a bit shakey
                  */
                 const float wm=m // bilinear weighted magnitude
-                    *(1.0f-fabs((rlocal_x+0.5f)/ncx-1.0f))
-                    *(1.0f-fabs((rlocal_y+0.5f)/ncy-1.0f))
+                    *(1.0f-fabsf((rlocal_x+0.5f)/ncx-1.0f))
+                    *(1.0f-fabsf((rlocal_y+0.5f)/ncy-1.0f))
                 ;
 
                 const float delta=fpartf(th)-0.5f; // distance from bin center
@@ -130,9 +130,10 @@ namespace priv {
                 // FIXME: summing more requires use of some more cleverness than is in here at the moment
                 __shared__ float v[BY];            
                 // warp sum
-                for(int j=16;j>=1;j>>=1)
+                
                     for(int i=0;i<nbins;++i)
-                        hist[i]+=__shfl_down(hist[i],j);
+                        for(int j=16;j>=1;j>>=1)
+                            hist[i]+=__shfl_down(hist[i],j);
 
                 // block sum
                 for(int i=0;i<nbins;++i) {

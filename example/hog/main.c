@@ -188,12 +188,13 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     while(app_is_running()) {
         void* input=disk(app_uptime_s()/10.0);
 
-        clock=tic();
+
         struct hog_image him= {
             .type=hog_u8,
                 .w=256,.h=256,.pitch=256,
                 .buf=input
         };
+        clock=tic();
         hog(&ctx,him);
         acc+=(float)toc(&clock);
         
@@ -223,7 +224,15 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 /* 
  * TIMING DATA 
  * 
- * (sigmas: der 1px smooth 4px, 256x256 u8 inputs, HAL9001)
- * - cpu Release (b275a59)
- *   4.74 Mpx/s (13815 us/frame)
+ * (256x256 u8 inputs, 16x16 cells, Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ * - cpu Release (79f2903)
+ *   38.560860 Mpx/s (1699.547146 us/frame)
+ * - gpu Release (79f2903)
+ *   138.754465 Mpx/s (472.316333 us/frame)
+ *   
+ * (256x256 u8 inputs, 8x8 cells, Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ * - cpu Release (79f2903)
+ *   36.457226 Mpx/s (1797.613448 us/frame)
+ * - gpu Release (79f2903)
+ *   212.442609 Mpx/s (308.488020 us/frame)
  */
