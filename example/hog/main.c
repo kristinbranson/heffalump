@@ -173,7 +173,7 @@ static void autocontrast(const float *out,int n) {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={16,16},.nbins=8};
+    struct hog_parameters params={.cell={8,8},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
@@ -208,7 +208,6 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         imshow(imshow_f32,shape.x,shape.y,out);
 #else
         hogshow(0,0,&shape,&strides,out);
-        //hogshow(0,0,8,256/params.cell.w,256/params.cell.h,out);
         imshow(imshow_u8,256,256,input);
 #endif
 
@@ -224,15 +223,28 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 /* 
  * TIMING DATA 
  * 
- * (256x256 u8 inputs, 16x16 cells, Dharmok, GTX 980, i7-5820K 3.3 GHz )
- * - cpu Release (79f2903)
- *   38.560860 Mpx/s (1699.547146 us/frame)
- * - gpu Release (79f2903)
- *   138.754465 Mpx/s (472.316333 us/frame)
+ * (256x256 u8 inputs, 16x16 cells)
+ *      Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ *      - cpu Release (79f2903)
+ *        38.560860 Mpx/s (1699.547146 us/frame)
+ *      - gpu Release (79f2903)
+ *        138.754465 Mpx/s (472.316333 us/frame)        
+ *      HAL9001, Titan X (Pascal), i7-4770S 3.1Ghz 
+ *      - cpu Release (7dd30a84)
+ *         39.356212 Mpx/s (1665.200903 us/frame)
+ *      - gpu Release (7dd30a84)
+ *        353.759837 Mpx/s ( 185.255626 us/frame)
+ *        
  *   
- * (256x256 u8 inputs, 8x8 cells, Dharmok, GTX 980, i7-5820K 3.3 GHz )
- * - cpu Release (79f2903)
- *   36.457226 Mpx/s (1797.613448 us/frame)
- * - gpu Release (79f2903)
- *   212.442609 Mpx/s (308.488020 us/frame)
+ * (256x256 u8 inputs, 8x8 cells)
+ *      Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ *      - cpu Release (79f2903)
+ *        36.457226 Mpx/s (1797.613448 us/frame)
+ *      - gpu Release (79f2903)
+ *        212.442609 Mpx/s (308.488020 us/frame)
+ *      HAL9001, Titan X (Pascal), i7-4770S 3.1Ghz 
+ *      - cpu Release (7dd30a84)
+ *         38.666783 Mpx/s (1694.891458 us/frame)
+ *      - gpu Release (7dd30a84)
+ *        354.523602 Mpx/s ( 184.856522 us/frame)
  */

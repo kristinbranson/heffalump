@@ -20,6 +20,11 @@ struct workspace {
         float *t,*xx,*xy,*yy,*tx,*ty,*x,*y;
     } dI;
     float *last;
+
+    enum lk_scalar_type type;
+    int pitch;
+    struct conv_context smooth,dx,dy;
+
     float data[];
 };
 
@@ -51,7 +56,15 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     return k;
 }
 
-static struct workspace* workspace_create(const struct lk_parameters* params,unsigned npx,unsigned nbytes_of_image) {
+static struct workspace* workspace_create(
+    void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
+    const struct lk_parameters* params,    
+    unsigned w,
+    unsigned h,
+    unsigned pitch,
+    enum lk_scalar_type type) 
+{
+    unsigned nbytes_of_image=bytes_per_pixel(type)*pitch*h;
     unsigned
         nder=(unsigned)(8*params->sigma.derivative),
         nsmo=(unsigned)(6*params->sigma.smoothing);
@@ -59,10 +72,13 @@ static struct workspace* workspace_create(const struct lk_parameters* params,uns
     nsmo=(nsmo/2)*2+1; // make odd
     struct workspace* self=(struct workspace*)malloc(
         sizeof(struct workspace) +
-        sizeof(float)*(nder+nsmo+6*npx) +
+        sizeof(float)*(nder+nsmo+6*w*h) +
         nbytes_of_image);
     if(!self)
         return 0;
+
+    self->type=type;
+    self->pitch=pitch;
 
     self->kernels.nder=nder;
     self->kernels.nsmooth=nsmo;
@@ -79,9 +95,25 @@ static struct workspace* workspace_create(const struct lk_parameters* params,uns
     float **ds=(float**)&self->dI;
     for(int i=0;i<6;++i) {
         ds[i]=data+c;
-        c+=npx;
+        c+=w*h;
     }
     self->last=data+c;
+
+    {
+        float *ks[]={self->kernels.smoothing,self->kernels.smoothing};
+        unsigned nks[]={self->kernels.nsmooth,self->kernels.nsmooth};
+        self->smooth=conv_init(logger,w,h,w,ks,nks);
+    }
+    {
+        float *ks[]={self->kernels.derivative,self->kernels.derivative};
+        unsigned nks0[]={self->kernels.nder,0};
+        unsigned nks1[]={0,self->kernels.nder};
+        self->dx=conv_init(logger,w,h,w,ks,nks0);
+        self->dy=conv_init(logger,w,h,w,ks,nks1);
+        self->dI.x=self->dx.out;
+        self->dI.y=self->dy.out;
+    }
+
     return self;
 }
 
@@ -93,44 +125,32 @@ struct lk_context lk_init(
     unsigned pitch,
     const struct lk_parameters params
 ){
-    struct workspace *ws=workspace_create(&params,w*h,bytes_per_pixel(type)*pitch*h);
+    struct workspace *ws=workspace_create(logger,&params,w,h,pitch,type);
+    
+
     struct lk_context self={
         .logger=logger,
-        .type=type,
         .w=w,
         .h=h,
-        .pitch=pitch,
         .result=(float*)malloc(sizeof(float)*w*h*2),
         .workspace=ws
     };
     CHECK(self.result);
     CHECK(self.workspace);
 
-    {
-        float *ks[]={ws->kernels.smoothing,ws->kernels.smoothing};
-        unsigned nks[]={ws->kernels.nsmooth,ws->kernels.nsmooth};
-        self.smooth=conv_init(logger,w,h,w,ks,nks);
-    }
-    {
-        float *ks[]={ws->kernels.derivative,ws->kernels.derivative};
-        unsigned nks0[]={ws->kernels.nder,0};
-        unsigned nks1[]={0,ws->kernels.nder};
-        self.dx=conv_init(logger,w,h,w,ks,nks0);
-        self.dy=conv_init(logger,w,h,w,ks,nks1);
-        ws->dI.x=self.dx.out;
-        ws->dI.y=self.dy.out;
-    }
+
     memset(ws->last,0,bytes_per_pixel(type)*pitch*h);
 Error:
     return self;
 }
 
 void lk_teardown(struct lk_context *self){
+    struct workspace *ws=(struct workspace*)self->workspace;
+    conv_teardown(&ws->smooth);
+    conv_teardown(&ws->dx);
+    conv_teardown(&ws->dy);
     free(self->result);
     free(self->workspace);
-    conv_teardown(&self->smooth);
-    conv_teardown(&self->dx);
-    conv_teardown(&self->dy);
 }
 
 extern void diff(float *out,enum lk_scalar_type type,void *a,void *b,unsigned w,unsigned h,unsigned p);
@@ -149,11 +169,11 @@ void lk(struct lk_context *self, const void *im){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
     // dI/dx
-    conv(&self->dx,self->type,im);
+    conv(&ws->dx,ws->type,im);
     // dI/dy
-    conv(&self->dy,self->type,im);
+    conv(&ws->dy,ws->type,im);
     // dI/dt
-    diff(ws->dI.t,self->type,im,ws->last,self->w,self->h,self->pitch);
+    diff(ws->dI.t,ws->type,im,ws->last,self->w,self->h,ws->pitch);
 
     // norm
     // This is important for keeping things numerically stable
@@ -177,8 +197,8 @@ void lk(struct lk_context *self, const void *im){
               *b=jobs[i].b;
         for(;out<end;++out,++a,++b)
             *out=*a**b;
-        conv(&self->smooth,conv_f32,jobs[i].out);
-        conv_copy(&self->smooth,jobs[i].out); // FIXME: avoid this copy
+        conv(&ws->smooth,conv_f32,jobs[i].out);
+        conv_copy(&ws->smooth,jobs[i].out); // FIXME: avoid this copy
     }
     
     // Solve the 2x2 linear system for the flow
@@ -212,7 +232,7 @@ void lk(struct lk_context *self, const void *im){
     }
 
     // replace last image now that we're done using it
-    memcpy(ws->last,im,bytes_per_pixel(self->type)*self->pitch*self->h);
+    memcpy(ws->last,im,bytes_per_pixel(ws->type)*ws->pitch*self->h);
 }
 
 void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes)){
