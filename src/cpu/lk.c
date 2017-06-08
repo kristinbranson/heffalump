@@ -238,6 +238,9 @@ void lk(struct lk_context *self, const void *im){
 void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes)){
     return malloc(sizeof(float)*self->w*self->h*2);
 }
-void  lk_copy(const struct lk_context *self, float *out){
-    memcpy(out,self->result,sizeof(float)*self->w*self->h*2);
+void lk_copy(const struct lk_context *self, float *out, size_t nbytes){
+    const size_t n=sizeof(float)*self->w*self->h*2;
+    CHECK(nbytes>=n);
+    memcpy(out,self->result,n);
+Error:;
 }

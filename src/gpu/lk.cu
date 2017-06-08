@@ -26,13 +26,26 @@ namespace gpu {
         , params(params)
         {
             CUTRY(logger,cudaMalloc(&out,bytesof_output()); 
-            CUTRY(logger,cudaMemset(ws->last,0,bytesof_input()));
-            CUTRY(logger,cudaMemset(ws->last,0,bytesof_input()));
+            CUTRY(logger,cudaMemset(input,0,bytesof_input()));
+            CUTRY(logger,cudaMemset(last,0,bytesof_input()));
+            CUTRY(logger,cudaMemset(dt,0,w*h*sizeof(float)));
+
+            float *ks[]={self->kernels.derivative,self->kernels.derivative};
+            unsigned nks0[]={self->kernels.nder,0};
+            unsigned nks1[]={0,self->kernels.nder};
+            self->dx=conv_init(logger,w,h,w,ks,nks0);
+            self->dy=conv_init(logger,w,h,w,ks,nks1);
         }
 
         ~workspace() {
             CUTRY(logger,cudaFree(last));
             CUTRY(logger,cudaFree(out));
+        }
+
+        void compute(const float* im) {
+            CUTRY(cudaMemcpy(input,im,bytesof_input(),cudaMemcpyHostToDevice));
+
+            Error:;
         }
 
         size_t bytesof_input() const {
@@ -43,10 +56,21 @@ namespace gpu {
             return sizeof(float)*w*h*2;
         }
 
+        void copy_last_result(void * buf,size_t nbytes) {
+            CUTRY(cudaMemcpy(buf,out,n,cudaMemcpyDeviceToHost));
+        }
     private:
         unsigned w,h,pitch;
         logger_t logger;
-        float *out,*last;
+        float *out,*last, *input ,*dt;
+        struct  {
+            struct conv_context dx,dy;        
+            float *dt;
+        } stage1; // initial computation of gradient in x,y, and t
+
+        struct {
+            struct conv_context dx,dy,dt;
+        } stage2; // weighting and normalization
         struct lk_parameters params;
     };
 
@@ -77,4 +101,26 @@ struct lk_context lk_init(
     }
 Error:
     return self;
+}
+
+void lk_teardown(struct lk_context *self) {
+    if(!self) return;
+    struct workspace* ws=(struct workspace*)self->ws;
+    delete ws;
+    self->ws=0;
+}
+
+void lk(struct lk_context *self,const void *im) {
+    struct workspace* ws=(struct workspace*)self->ws;
+    ws->compute(im);
+}
+
+void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)) {    
+    struct workspace* ws=(struct workspace*)self->ws;
+    return alloc(ws->bytes_of_output());
+}
+
+void  lk_copy(const struct lk_context *self, float *out, size_t nbytes) {
+    struct workspace* ws=(struct workspace*)self->ws;
+    ws->copy_last_result(out,nbytes);
 }

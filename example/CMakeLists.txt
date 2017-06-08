@@ -1,6 +1,7 @@
 add_subdirectory(SFMT-src-1.5.1 sfmt)
 add_subdirectory(imshow)
 add_subdirectory(hogshow)
+add_subdirectory(stream)
 
 set_target_properties(sfmt   PROPERTIES FOLDER examples/libs)
 set_target_properties(imshow PROPERTIES FOLDER examples/libs)

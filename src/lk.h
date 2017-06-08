@@ -80,7 +80,7 @@ void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes));
 
 /** Copy the result buffer to out.
 */
-void  lk_copy(const struct lk_context *self, float *out);
+void  lk_copy(const struct lk_context *self, float *out, size_t nbytes);
 
 #ifdef __cplusplus
 }
