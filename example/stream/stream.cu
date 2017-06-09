@@ -8,7 +8,7 @@
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
 #define NELEM (1<<24)
-#define NSTREAM (4)
+#define NSTREAM (2)
 #define NREPS (1<<5)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -30,7 +30,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 __global__
 void unaryop(float * __restrict__ out,const float * __restrict__ a) {
     auto i=threadIdx.x+blockIdx.x*blockDim.x;
-    out[i]=sqrtf(a[i]);
+    out[i]=a[i]*a[i];
 }
 
 __global__
@@ -44,32 +44,31 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
     auto b=new float[NELEM];
     struct {
         float *a,*b,*ab,*a2,*b2,*ab2;
-    } dev[2];
+    } dev[NSTREAM];
 
-
-
-    
 
     try { 
-        CUTRY(cudaSetDevice(1));
+        CUTRY(cudaSetDevice(0));
         {
             cudaDeviceProp prop;
             int id;
             CUTRY(cudaGetDevice(&id));
             CUTRY(cudaGetDeviceProperties(&prop,id));
-            LOG("CUDA: %s",prop.name);
+            LOG("CUDA: %s\n\tAsync engine count: %d\n\tDevice overlap: %s",prop.name,prop.asyncEngineCount,prop.deviceOverlap?"Yes":"No");
         }
 
-        for(auto j=0;j<2;++j) {
+        for(auto j=0;j<NSTREAM;++j) {
             CUTRY(cudaMalloc(&dev[j].a,sizeof(*a)*NELEM));
             CUTRY(cudaMalloc(&dev[j].b,sizeof(*b)*NELEM));
             CUTRY(cudaMalloc(&dev[j].ab,sizeof(*b)*NELEM));
+            CUTRY(cudaMalloc(&dev[j].a2,sizeof(*a)*NELEM));
+            CUTRY(cudaMalloc(&dev[j].b2,sizeof(*b)*NELEM));
+            CUTRY(cudaMalloc(&dev[j].ab2,sizeof(*b)*NELEM));
         }
 
-        cudaStream_t stream[2][NSTREAM];
-        for(auto j=0;j<2;++j)
+        cudaStream_t stream[NSTREAM];
         for(auto i=0;i<NSTREAM;++i)
-            CUTRY(cudaStreamCreate(&stream[j][i]));
+            CUTRY(cudaStreamCreate(&stream[i]));
 
         cudaEvent_t start,stop;
         CUTRY(cudaEventCreate(&start));
@@ -77,9 +76,9 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
 
         struct {
             cudaEvent_t a_uploaded,b_uploaded,ab_done,result_downloaded;
-        } es[2];
+        } es[NSTREAM];
         
-        for(auto i=0;i<2;++i) {
+        for(auto i=0;i<NSTREAM;++i) {
             CUTRY(cudaEventCreate(&es[i].a_uploaded,cudaEventDisableTiming));
             CUTRY(cudaEventCreate(&es[i].b_uploaded,cudaEventDisableTiming));
             CUTRY(cudaEventCreate(&es[i].ab_done,cudaEventDisableTiming));
@@ -88,21 +87,33 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
     
         LOG("Starting");
 
-        cudaEventRecord(start,stream[0][0]);
-        for(auto i=0;i<NREPS;++i) {
-            int j=i%2;
+        // Note: All memory commands are processed in the order they are issued,
+        // independent of the stream they are enqueued in.
 
-            CUTRY(cudaMemcpyAsync(dev[j].a,a,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[j][0]));
-            CUTRY(cudaMemcpyAsync(dev[j].b,b,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[j][0]));
-            CUTRY(cudaStreamWaitEvent(stream[j][0],es[j].result_downloaded,0));
-            binaryop<<<NELEM/1024,1024,0,stream[j][0]>>>(dev[j].ab,dev[j].a,dev[j].b);
-            CUTRY(cudaMemcpyAsync(a,dev[j].ab,sizeof(*a)*NELEM,cudaMemcpyDeviceToHost,stream[j][0]));
-            CUTRY(cudaEventRecord(es[j].result_downloaded,stream[j][0]));
+        cudaEventRecord(start,stream[0]);
+
+        CUTRY(cudaMemcpyAsync(dev[0].a,a,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[0]));
+        CUTRY(cudaMemcpyAsync(dev[0].b,b,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[0]));
+
+        for(auto i=0;i<NREPS;++i) {
+            auto j=i%NSTREAM;
+            auto jn=(i+1)%NSTREAM; // next j
+
+            
+            CUTRY(cudaStreamWaitEvent(stream[j],es[j].result_downloaded,0));
+            unaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].a2,dev[j].a);
+            unaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].b2,dev[j].b);
+            binaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].ab,dev[j].a,dev[j].b);
+            binaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].ab2,dev[j].a2,dev[j].b2);
+            CUTRY(cudaMemcpyAsync(dev[jn].a,a,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[jn]));
+            CUTRY(cudaMemcpyAsync(a,dev[j].ab,sizeof(*a)*NELEM,cudaMemcpyDeviceToHost,stream[j]));
+            CUTRY(cudaMemcpyAsync(dev[jn].b,b,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[jn]));
+            CUTRY(cudaEventRecord(es[j].result_downloaded,stream[j]));
             
         }
-        cudaEventRecord(stop,stream[1][0]);
-        CUTRY(cudaStreamSynchronize(stream[0][0]));
-        CUTRY(cudaStreamSynchronize(stream[1][0]));
+        cudaEventRecord(stop,stream[(NREPS-1)%NSTREAM]);
+        for(auto i=0;i<NSTREAM;++i)
+            CUTRY(cudaStreamSynchronize(stream[i]));
 
         {
             float ms;
@@ -112,25 +123,8 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
 
         LOG("All Done");
 
-        // Cleanup
-
-        for(auto i=0;i<2;++i) {
-            CUTRY(cudaEventDestroy(es[i].a_uploaded));
-            CUTRY(cudaEventDestroy(es[i].b_uploaded));
-            CUTRY(cudaEventDestroy(es[i].ab_done));
-            CUTRY(cudaEventDestroy(es[i].result_downloaded));
-        }
-
-        for(auto j=0;j<2;++j)
-        for(auto i=0;i<NSTREAM;++i)
-            cudaStreamDestroy(stream[j][i]);
-       
-//
-//        CUTRY(cudaFree(dev.a));
-//        CUTRY(cudaFree(dev.b));
-        delete [] a;
-        delete [] b;
-    return 0;
+        // Cleanup (or not)
+        return 0;
     } catch(const std::runtime_error &e) {
         ERR("ERROR: %s",e.what());
         return 1;
