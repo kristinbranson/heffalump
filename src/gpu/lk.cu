@@ -45,9 +45,9 @@ namespace gpu {
     // launch this as a 1d kernel
     // lastmax is a lower-bound for the computed maximum value.
     // FIXME: rename lastmax
-    __global__ void max_k(float * __restrict__ out,const float* __restrict__ in, float lastmax, int n) {
-        int i=threadIdx.x+blockIdx.x*blockDim.x;
-
+    __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, float lastmax, int n) {
+        
+        int i=threadIdx.x+blockIdx.x*blockDim.x
         auto a=(i<n)?in[i]:lastmax;
         if(__all(a<lastmax)) {
             out[blockIdx.x]=lastmax;
@@ -63,6 +63,34 @@ namespace gpu {
         if(warp==0)
             out[blockIdx.x]=warpmax(t[lane]);
     }
+    
+    struct vmax {
+        vmax(logger_t logger): logger(logger){
+            CUTRY(logger,cudaMalloc(&tmp,1024*sizeof(float))); // max size - holds values from reduction in at most 1024 blocks
+            CUTRY(logger,cudaMalloc(&out,sizeof(float))); // holds the final reduced value
+        }
+        ~vmax() {
+            try {
+                CUTRY(logger,cudaFree(tmp));
+                CUTRY(logger,cudaFree(out));
+            } catch(const std::runtime_error& e) {
+                ERR(logger,"CUDA: %s",e.what());
+            }
+        }
+        float compute(float* v,size_t n,float lower_bound=-FLT_MAX,cudaStream_t stream=nullptr) {
+            dim3 block(32*4);
+            dim3 grid(min(1024,(n+block.x-1)/block.x)); // FIXME: this should be a max of 1024
+            vmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
+            vmax_k<<<1,grid.x,0,stream>>>(out,tmp,lower_bound,grid.x);
+        }
+    private:
+        static int min(int a,int b) { return a<b?a:b; }
+
+        float *tmp,*out;
+        int capacity;
+        cudaStream_t stream;
+        logger_t logger;
+    };
 
     struct workspace {
         workspace(logger_t logger, enum lk_scalar_type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
