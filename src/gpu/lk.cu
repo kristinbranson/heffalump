@@ -2,6 +2,7 @@
 #include <new>
 #include <stdexcept>
 #include <cuda_runtime.h>
+#include "conv.h"
 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
@@ -17,6 +18,50 @@ namespace gpu {
     unsigned bytes_per_pixel(enum lk_scalar_type type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
         return bpp[type];
+    }
+
+    template<typename T>
+    __global__ void diff_k(float* __restrict__ out,const T * __restrict__,const T* __restrict__ b,int w,int h,int p) {
+        const int x=threadIdx.x+blockIdx.x*blockdim.x;
+        const int y=threadIdx.y+blockIdx.y*blockdim.y;
+        if(x<w && y<h) {
+            const int i=x+y*p;
+            out[x+y*w]=a[i]-b[i];
+        }
+    }
+
+    template<typename T>
+    __device__ T max(T a,T b) {return a>b?a:b;}
+
+    __device__ float warpmax(float v) {
+        // compute max across a warp
+        for(int j=1;j<16;j>>=1)
+            v=max(v,__shfl_down(v,1));
+        return v;
+    }
+
+    // Computes 1 max per block
+    //
+    // launch this as a 1d kernel
+    // lastmax is a lower-bound for the computed maximum value.
+    // FIXME: rename lastmax
+    __global__ void max_k(float * __restrict__ out,const float* __restrict__ in, float lastmax, int n) {
+        int i=threadIdx.x+blockIdx.x*blockDim.x;
+
+        auto a=(i<n)?in[i]:lastmax;
+        if(__all(a<lastmax)) {
+            out[blockIdx.x]=lastmax;
+            return;             // FIXME: output lastmax
+        }
+
+        __shared__ float t[32]; // assumes max of 1024 threads per block
+        const int lane=threadIdx.x&31;
+        const int warp=threadIdx.x>>5;
+        t[lane]=lastmax;
+        __threadfence_block();
+        t[warp]=warpmax(a);
+        if(warp==0)
+            out[blockIdx.x]=warpmax(t[lane]);
     }
 
     struct workspace {

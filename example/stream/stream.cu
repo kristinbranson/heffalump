@@ -106,8 +106,8 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
             binaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].ab,dev[j].a,dev[j].b);
             binaryop<<<NELEM/1024,1024,0,stream[j]>>>(dev[j].ab2,dev[j].a2,dev[j].b2);
             CUTRY(cudaMemcpyAsync(dev[jn].a,a,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[jn]));
-            CUTRY(cudaMemcpyAsync(a,dev[j].ab,sizeof(*a)*NELEM,cudaMemcpyDeviceToHost,stream[j]));
             CUTRY(cudaMemcpyAsync(dev[jn].b,b,sizeof(*a)*NELEM,cudaMemcpyHostToDevice,stream[jn]));
+            CUTRY(cudaMemcpyAsync(a,dev[j].ab,sizeof(*a)*NELEM,cudaMemcpyDeviceToHost,stream[j]));
             CUTRY(cudaEventRecord(es[j].result_downloaded,stream[j]));
             
         }

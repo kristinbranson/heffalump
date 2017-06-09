@@ -173,7 +173,7 @@ static void autocontrast(const float *out,int n) {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={8,8},.nbins=8};
+    struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
     float* out=hog_features_alloc(&ctx,malloc);
@@ -224,7 +224,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
  * TIMING DATA 
  * 
  * (256x256 u8 inputs, 16x16 cells)
- *      Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ *      Dharmok, GTX 980, i7-5820K 3.3 GHz
  *      - cpu Release (79f2903)
  *        38.560860 Mpx/s (1699.547146 us/frame)
  *      - gpu Release (79f2903)
@@ -237,7 +237,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
  *        
  *   
  * (256x256 u8 inputs, 8x8 cells)
- *      Dharmok, GTX 980, i7-5820K 3.3 GHz )
+ *      Dharmok, GTX 980, i7-5820K 3.3 GHz
  *      - cpu Release (79f2903)
  *        36.457226 Mpx/s (1797.613448 us/frame)
  *      - gpu Release (79f2903)
