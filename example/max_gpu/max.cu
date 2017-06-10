@@ -8,7 +8,7 @@
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
 #define NELEM (1<<28)
-// #define NSTREAM (2)
+#define NSTREAM (2)
 #define NREPS (1<<5)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -68,6 +68,41 @@ __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, co
         out[blockIdx.x]=mx;
 }
 
+__device__ float max4(float4 v) {
+    return fmaxf(fmaxf(v.x,v.y),fmaxf(v.z,v.w));
+}
+
+// Just like vmax4, but threads use vectorized loads to do 4 elements at a time
+// Input and length, n,  must be aligned to 4 elements (16 bytes)
+__global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, const float lower_bound, int n) {
+    #define PAYLOAD (4)
+    float mx=lower_bound;
+    for( // grid-stride loop
+        int i=threadIdx.x+blockIdx.x*blockDim.x;
+        PAYLOAD*(i-threadIdx.x)<n; // as long as any thread in the block is in-bounds
+        i+=blockDim.x*gridDim.x) 
+    {
+        auto a=(PAYLOAD*i<n)?max4(in[i]):mx;
+        if(__all(a<mx))
+            continue;
+
+        __shared__ float t[32]; // assumes max of 1024 threads per block
+        const int lane=threadIdx.x&31;
+        const int warp=threadIdx.x>>5;
+        // init the per-warp max's using one warp
+        // in case we don't run with 32 warps
+        t[lane]=mx;
+        __threadfence_block();
+        t[warp]=warpmax(a);
+        __syncthreads();
+        if(warp==0)
+            mx=fmaxf(mx,warpmax(t[lane]));
+        __syncthreads();
+    }
+    if(threadIdx.x==0)
+        out[blockIdx.x]=mx;
+}
+
 using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
 
 struct vmax {
@@ -94,16 +129,13 @@ struct vmax {
     // work
     auto compute(float* v,int n) const -> const vmax& {
         dim3 block(32*4);
-        dim3 grid(min(1024,(n+block.x-1)/block.x)); // use a max of 1024 blocks 
-        vmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
-//        {
-//            auto a=new float[32];
-//            CUTRY(cudaStreamSynchronize(stream));
-//            CUTRY(cudaMemcpy(a,tmp,32*sizeof(float),cudaMemcpyDeviceToHost));
-//            for(int i=0;i<32;++i) 
-//                LOG("%d : %f",i,a[i]);
-//            delete[] a;
-//        }
+        dim3 grid(min(1024,(n+block.x-1)/block.x)); // use a max of 1024 blocks
+        // Use vectorized loads for a slight speed increase (~33%)
+        // when alignment conditions are satisfied
+        if((n&0x3)==0 && (reinterpret_cast<size_t>(v)&0x3)==0)
+            vmax4_k<<<grid,block,0,stream>>>(tmp,reinterpret_cast<float4*>(v),lower_bound,n);
+        else
+            vmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
         vmax_k<<<1,32*((grid.x+31)/32),0,stream>>>(out,tmp,lower_bound,grid.x);
         return *this;
     }
@@ -156,9 +188,10 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
         v.with_lower_bound(1<<20);
         for(int i=0;i<NREPS;++i) {
             CUTRY(cudaMemcpyAsync(dev.a,a,sizeof(float)*NELEM,cudaMemcpyHostToDevice,stream));
-            float val=v.compute(dev.a,NELEM).to_host();
-            LOG("Max: %f",val);
+            v.compute(dev.a,NELEM);
+            
         }
+        LOG("Max: %f",v.to_host());
         LOG("All Done");
 
         // Cleanup (or not)
