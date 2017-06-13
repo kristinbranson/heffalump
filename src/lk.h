@@ -1,5 +1,5 @@
-#pragma 
-#include <stddef.h>
+#pragma once
+
 #ifndef H_NGC_LK
 #define H_NGC_LK
 

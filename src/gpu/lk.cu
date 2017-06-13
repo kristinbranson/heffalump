@@ -16,7 +16,7 @@ namespace gpu {
 
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
 
-    unsigned bytes_per_pixel(enum lk_scalar_type type) {
+    unsigned bytes_per_pixel(enum conv_scalar_type type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
         return bpp[type];
     }
@@ -31,15 +31,51 @@ namespace gpu {
         }
     }
 
-    static float* sqrt_gaussian(float *k,int n,float sigma) {
-        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
-        const float s2=sigma*sigma;
-        const float c=(n-1)/2.0f;
-        for(auto i=0;i<n;++i) {
-            float r=i-c;
-            k[i]=sqrtf(norm*expf(-0.5f*r*r/s2));
+    template<typename T>
+    __global__ void mult_k(float* __restrict__ out,const T * __restrict__ a,const T* __restrict__ b,int n) {
+        const int i=threadIdx.x+blockIdx.x*blockdim.x;
+        if(i<n)
+            out[i]=a[i]*b[i];
+    }
+
+    __global__ void solve_k(
+        float2 * __restrict__ out,
+        const float * __restrict__ Ixx,
+        const float * __restrict__ Ixy,
+        const float * __restrict__ Iyy,
+        const float * __restrict__ Ixt,
+        const float * __restrict__ Iyt,
+        const float * __restrict__ magx,
+        const float * __restrict__ magy,
+        const float * __restrict__ magt,
+        int n)
+    {
+        const int i=threadIdx.x+blockIdx.x*blockDim.x;
+        if(i>=n)
+            return;
+
+
+        const float mx=magx[0];
+        const float my=magy[0];
+        const float mt=magt[0];
+        const float normx=1.0f/mx;
+        const float normy=1.0f/my;
+        const float normt=1.0f/mt;
+        const float xunits=0.5f*(mx*mx+my*my)*mt/(mx*my*my);
+        const float yunits=0.5f*(mx*mx+my*my)*mt/(mx*mx*my);
+
+        const float xx= Ixx[i]*normx*normx;
+        const float xy= Ixy[i]*normx*normy;
+        const float yy= Iyy[i]*normy*normy;
+        const float xt=-Ixt[i]*normx*normt;
+        const float yt=-Iyt[i]*normy*normt;
+        
+        const float det=xx*yy-xy*xy;
+        if(det>1e-5) {
+            out[i]=make_float2(
+                (xunits/det)*(xx*xt+xy*yt),
+                (yunits/det)*(xy*xt+yy*yt));
         }
-        return k;
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
@@ -54,27 +90,59 @@ namespace gpu {
         return k;
     }
 
+    static float* gaussian(float *k,int n,float sigma) {
+        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        const float s2=sigma*sigma;
+        const float c=(n-1)/2.0f;
+        for(auto i=0;i<n;++i) {
+            float r=i-c;
+            k[i]=norm*expf(-0.5f*r*r/s2);
+        }
+        return k;
+    }
+
     struct workspace {
         workspace(logger_t logger, enum lk_scalar_type type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
         : logger(logger)
-        , type(type)
+        , type((conv_scalar_type)type)
+        , vmax(logger)
         , w(w), h(h), pitch(p)
         , params(params)
-        , stream(0)
+        , stream(nullptr)
         {
-            CUTRY(logger,cudaMalloc(&out,bytesof_output()); 
+            CUTRY(logger,cudaMalloc(&out,bytesof_output()));
             CUTRY(logger,cudaMemset(input,0,bytesof_input()));
             CUTRY(logger,cudaMemset(last,0,bytesof_input()));
-            CUTRY(logger,cudaMemset(dt,0,w*h*sizeof(float)));
+            CUTRY(logger,cudaMemset(stage1.dt,0,bytesof_intermediate()));
 
             make_kernels();
 
-            float *ks[]={self->kernels.derivative,self->kernels.derivative};
-            unsigned nks0[]={self->kernels.nder,0};
-            unsigned nks1[]={0,self->kernels.nder};
-            stage1.dx=conv_init(logger,w,h,p,ks,nks0);
-            stage1.dy=conv_init(logger,w,h,p,ks,nks1);
-            stage1.weight=conv_init(logger,w,h,w,ks,nks);
+            {
+                float *ks[]={kernels.derivative,kernels.derivative};
+                unsigned nks0[]={kernels.nder,0};
+                unsigned nks1[]={0,kernels.nder};
+                stage1.dx=conv_init(logger,w,h,p,ks,nks0);
+                stage1.dy=conv_init(logger,w,h,p,ks,nks1);
+            }
+
+            CUTRY(logger,cudaMalloc(&stage2.xx,bytesof_intermediate()));
+            CUTRY(logger,cudaMalloc(&stage2.xy,bytesof_intermediate()));
+            CUTRY(logger,cudaMalloc(&stage2.yy,bytesof_intermediate()));
+            CUTRY(logger,cudaMalloc(&stage2.xt,bytesof_intermediate()));
+            CUTRY(logger,cudaMalloc(&stage2.yt,bytesof_intermediate()));
+
+            {
+                float *ks[]={kernels.smoothing,kernels.smoothing};
+                unsigned nks[]={kernels.nsmooth,kernels.nsmooth};
+                stage3.xx=conv_init(logger,w,h,w,ks,nks);
+                stage3.yy=conv_init(logger,w,h,w,ks,nks);
+                stage3.xy=conv_init(logger,w,h,w,ks,nks);
+                stage3.xt=conv_init(logger,w,h,w,ks,nks);
+                stage3.yt=conv_init(logger,w,h,w,ks,nks);
+            }
+
+
+
         }
 
         ~workspace() {
@@ -87,18 +155,57 @@ namespace gpu {
 
         auto with_stream(cudaStream_t s) -> &workspace{
             stream=s;
+            vmax.with_stream(s);
         }
 
         void compute(const void* im) {
             CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,stream));
             {
+#define CEIL(num,den) ((num+den-1)/den)
                 dim3 block(32,4);
                 dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
-                diff_k<<<grid,block,0,stream>>>(dt,last,input,w,h,p);
+                diff_k<<<grid,block,0,stream>>>(stage1.dt,last,input,w,h,pitch);
+
             }
-            conv(stage1.dx,type,input); // FIXME: use stream, use dev ptr
-            conv(stage1.dy,type,input); // FIXME: use stream, use dev ptr
+            conv(&stage1.dx,type,input); // FIXME: use stream, use dev ptr
+            conv(&stage1.dy,type,input); // FIXME: use stream, use dev ptr
             
+            const unsigned npx=w*h;
+            auto magx=vmax.compute(stage1.dx.out,npx).out;
+            auto magy=vmax.compute(stage1.dy.out,npx).out;
+            auto magt=vmax.compute(stage1.dt,npx).out;
+
+
+            {
+                int n=w*h;
+                dim3 block(32*4);
+                dim3 grid(CEIL(n,block.x));
+                mult_k<<<grid,block,0,stream>>>(stage2.xx,stage1.dx.out,stage1.dx.out,w*h);
+                mult_k<<<grid,block,0,stream>>>(stage2.xy,stage1.dx.out,stage1.dy.out,w*h);
+                mult_k<<<grid,block,0,stream>>>(stage2.yy,stage1.dy.out,stage1.dy.out,w*h);
+                mult_k<<<grid,block,0,stream>>>(stage2.xt,stage1.dx.out,stage1.dt,w*h);
+                mult_k<<<grid,block,0,stream>>>(stage2.yt,stage1.dy.out,stage1.dt,w*h);
+            }
+
+            conv(&stage3.xx,conv_f32,stage2.xx);
+            conv(&stage3.xy,conv_f32,stage2.xy);
+            conv(&stage3.yy,conv_f32,stage2.yy);
+            conv(&stage3.xt,conv_f32,stage2.xt);
+            conv(&stage3.yt,conv_f32,stage2.yt);
+
+            {
+                int n=w*h;
+                dim3 block(32*4);
+                dim3 grid(CEIL(n,block.x));
+                solve_k<<<grid,block,0,stream>>>(out,
+                    stage3.xx.out,
+                    stage3.xy.out,
+                    stage3.yy.out,
+                    stage3.xt.out,
+                    stage3.yt.out,
+                    magx,magy,magt,n);
+            }
+#undef CEIL
             Error:;
         }
 
@@ -106,13 +213,19 @@ namespace gpu {
             return bytes_per_pixel(type)*pitch*h;
         }
 
+        size_t bytesof_intermediate() const {
+            return sizeof(float)*w*h;
+        }
+
         size_t bytesof_output() const {
             return sizeof(float)*w*h*2;
         }
 
-        void copy_last_result(void * buf,size_t nbytes) {
-            CUTRY(logger,cudaMemcpy(buf,out,bytesof_output(),cudaMemcpyDeviceToHost));
+        void copy_last_result(void * buf,size_t nbytes) const {
+            CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,stream));
+            CUTRY(logger,cudaStreamSynchronize(stream));
         }
+
     private:
         void make_kernels() {
             unsigned
@@ -121,29 +234,35 @@ namespace gpu {
             nder=(nder/2)*2+1; // make odd
             nsmo=(nsmo/2)*2+1; // make odd
             kernels.smoothing=new float[nder];
-            kernels.derivative=new float[nsmooth];
-            sqrt_gaussian(kernels.smoothing,nsmooth,params.sigma.smoothing);
-            gaussian_derivative(kernel.derivative,nder,param.sigma.derivative);
-        }
+            kernels.derivative=new float[nsmo];
+            gaussian(kernels.smoothing,nsmo,params.sigma.smoothing);
+            gaussian_derivative(kernels.derivative,nder,params.sigma.derivative);
+        }                
 
-        enum lk_scalar_type type;
+        enum conv_scalar_type type;
         unsigned w,h,pitch;
         logger_t logger;
-        float *out,*last, *input ,*dt;
+        float *last,*input;
         struct  {
             struct conv_context dx,dy;        
             float *dt;
         } stage1; // initial computation of gradient in x,y, and t
+        priv::max::gpu::vmax vmax;
 
         struct {
-            struct conv_context dx,dy,dt;
+            float *xx,*xy,*yy,*xt,*yt;
         } stage2; // weighting and normalization
+        struct {
+            conv_context xx,xy,yy,xt,yt;
+        } stage3;
         struct lk_parameters params;
         cudaStream_t stream;
         struct {
             float *smoothing,*derivative;
             unsigned nsmooth,nder;
         } kernels;
+    public:
+        float2 *out;
     };
 
 }}} // end priv::lk::gpu
@@ -159,15 +278,14 @@ struct lk_context lk_init(
     unsigned pitch,
     const struct lk_parameters params
 ){
+    struct lk_context self={0};
     try {
-        workspace *ws=new workspace(logger,&params,w,h,pitch,type);
-        struct lk_context self={
-            .logger=logger,
-            .w=w,
-            .h=h,
-            .result=ws->out,
-            .workspace=ws
-        };        
+        workspace *ws=new workspace(logger,type,w,h,pitch,params);        
+        self.logger=logger;
+        self.w=w;
+        self.h=h;
+        self.result=ws->out;
+        self.workspace=ws;
     } catch(const std::runtime_error& e) {
         ERR(logger,"Problem initializing Lucas-Kanade context:\n\t%s",e.what());
     }
@@ -177,22 +295,22 @@ Error:
 
 void lk_teardown(struct lk_context *self) {
     if(!self) return;
-    struct workspace* ws=(struct workspace*)self->ws;
+    struct workspace* ws=(struct workspace*)self->workspace;
     delete ws;
-    self->ws=0;
+    self->workspace=nullptr;
 }
 
 void lk(struct lk_context *self,const void *im) {
-    struct workspace* ws=(struct workspace*)self->ws;
+    struct workspace* ws=(struct workspace*)self->workspace;
     ws->compute(im);
 }
 
 void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)) {    
-    struct workspace* ws=(struct workspace*)self->ws;
-    return alloc(ws->bytes_of_output());
+    struct workspace* ws=(struct workspace*)self->workspace;
+    return alloc(ws->bytesof_output());
 }
 
 void  lk_copy(const struct lk_context *self, float *out, size_t nbytes) {
-    struct workspace* ws=(struct workspace*)self->ws;
+    struct workspace* ws=(struct workspace*)self->workspace;
     ws->copy_last_result(out,nbytes);
 }

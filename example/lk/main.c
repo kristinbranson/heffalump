@@ -8,6 +8,7 @@
 #include "imshow.h"
 #include "app.h"
 #include <math.h>
+#include "conv.h"
 
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -67,7 +68,7 @@ static float* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.10;
+        buf[i]*=0.0;
 
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -148,7 +149,7 @@ static void autocontrast(const float *out,int n) {
         mn=min(mn,*c);
         mx=max(mx,*c);
     }
-    imshow_contrast(imshow_f32,mn,mx);    
+    imshow_contrast(imshow_f32,mn,mx);
 
 }
 
@@ -176,7 +177,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         lk(&ctx,input);
         acc+=(float)toc(&clock);
         
-        lk_copy(&ctx,out);
+        lk_copy(&ctx,out,2*ctx.w*ctx.h*sizeof(float));
         autocontrast(out,ctx.w*ctx.h*2);
         imshow(imshow_2f32,ctx.w,ctx.h,out);
 #endif

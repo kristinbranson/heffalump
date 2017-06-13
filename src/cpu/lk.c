@@ -4,10 +4,9 @@
 #include <string.h>
 #include <conv.h>
 
-#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define ERR(...) self.logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+#define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 #define countof(e) (sizeof(e)/sizeof(*(e)))
 
@@ -105,9 +104,16 @@ static struct workspace* workspace_create(
         self->smooth=conv_init(logger,w,h,w,ks,nks);
     }
     {
+#if 0
+        float k[]={-1.0f,0.0f,1.0f};
+        float *ks[]={k,k};
+        unsigned nks0[]={3,0};
+        unsigned nks1[]={0,3};
+#else        
         float *ks[]={self->kernels.derivative,self->kernels.derivative};
         unsigned nks0[]={self->kernels.nder,0};
         unsigned nks1[]={0,self->kernels.nder};
+#endif
         self->dx=conv_init(logger,w,h,w,ks,nks0);
         self->dy=conv_init(logger,w,h,w,ks,nks1);
         self->dI.x=self->dx.out;
@@ -135,8 +141,8 @@ struct lk_context lk_init(
         .result=(float*)malloc(sizeof(float)*w*h*2),
         .workspace=ws
     };
-    CHECK(self.result);
-    CHECK(self.workspace);
+    CHECK(self.logger,self.result);
+    CHECK(self.logger,self.workspace);
 
 
     memset(ws->last,0,bytes_per_pixel(type)*pitch*h);
@@ -177,9 +183,14 @@ void lk(struct lk_context *self, const void *im){
 
     // norm
     // This is important for keeping things numerically stable
+    #if 1
     float nx=norm_ip(ws->dI.x,npx);
     float ny=norm_ip(ws->dI.y,npx);
     float nt=norm_ip(ws->dI.t,npx);
+    #else
+    float nx,ny,nt;
+    nx=ny=nt=1.0f;
+    #endif
 
     // Gaussian weighted window
     // sum(w*(dI/da)*(dI/db))
@@ -216,11 +227,14 @@ void lk(struct lk_context *self, const void *im){
         // determinant mag: nx nx ny ny
         // numerator mag: (nx nx + ny ny) nx nt - total mag: (nx nx + ny ny) nt / (nx ny ny) - nx~ny => nt/nx
         // numerator mag: (nx nx + ny ny) ny nt - total mag: (nx nx + ny ny) nt / (nx nx ny) -
-        const float xunits=(nx*nx+ny*ny)*nt/(nx*ny*ny);
-        const float yunits=(nx*nx+ny*ny)*nt/(nx*nx*ny);
+        const float xunits=0.5f*(nx*nx+ny*ny)*nt/(nx*ny*ny);
+        const float yunits=0.5f*(nx*nx+ny*ny)*nt/(nx*nx*ny);
         for(;xx<end;++xx,++xy,++yy,++tx,++ty,++v) {
             const float a=*xx,b=*xy,d=*yy;
             const float det=a*d-b*b;
+            #if 0
+                v->x=v->y=det;
+            #else
             if(det>1e-5) {
                 const float s=-*tx,t=-*ty;
                 v->x=(xunits/det)*(a*s+b*t);
@@ -228,6 +242,7 @@ void lk(struct lk_context *self, const void *im){
             } else {
                 v->x=v->y=0.0f;
             }
+            #endif
         }
     }
 
@@ -240,7 +255,7 @@ void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes)){
 }
 void lk_copy(const struct lk_context *self, float *out, size_t nbytes){
     const size_t n=sizeof(float)*self->w*self->h*2;
-    CHECK(nbytes>=n);
+    CHECK(self->logger,nbytes>=n);
     memcpy(out,self->result,n);
 Error:;
 }
