@@ -7,7 +7,7 @@
 #define CHECK(e) do{if(!(e)){ERR("Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
-#define NELEM (1<<28)
+#define NELEM (1<<24)
 #define NSTREAM (2)
 #define NREPS (1<<5)
 
@@ -48,8 +48,9 @@ __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, co
         i+=blockDim.x*gridDim.x) 
     {
         auto a=(i<n)?in[i]:mx;
-        if(__all(a<mx))
-            continue;
+// The kernel is read throughput limited, so skipping work doesn't save anything
+//        if(__all(a<mx))
+//            continue;
 
         __shared__ float t[32]; // assumes max of 1024 threads per block
         const int lane=threadIdx.x&31;
@@ -83,8 +84,9 @@ __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, 
         i+=blockDim.x*gridDim.x) 
     {
         auto a=(PAYLOAD*i<n)?max4(in[i]):mx;
-        if(__all(a<mx))
-            continue;
+        // The kernel is read throughput limited, so skipping work doesn't save anything
+        //if(__all(a<mx))
+        //    continue;
 
         __shared__ float t[32]; // assumes max of 1024 threads per block
         const int lane=threadIdx.x&31;
@@ -165,7 +167,7 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
     auto a=new float[NELEM];
     struct {
         float *a;
-    } dev;
+    } dev[NSTREAM];
 
     try { 
         CUTRY(cudaSetDevice(0));
@@ -177,21 +179,29 @@ int WinMain(HINSTANCE hinst,HINSTANCE hprev, LPSTR cmd,int show) {
             LOG("CUDA: %s\n\tAsync engine count: %d\n\tDevice overlap: %s",prop.name,prop.asyncEngineCount,prop.deviceOverlap?"Yes":"No");
         }
 
-        cudaStream_t stream;
-        CUTRY(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
-        CUTRY(cudaMalloc(&dev.a,sizeof(float)*NELEM));
+        vmax v[]={vmax(logger),vmax(logger)};
+        cudaStream_t stream[NSTREAM];
+        for(int i=0;i<NSTREAM;++i) {
+            CUTRY(cudaStreamCreateWithFlags(&stream[i],cudaStreamNonBlocking));
+            CUTRY(cudaMalloc(&dev[i].a,sizeof(float)*NELEM));
+            v[i].with_stream(stream[i]);
+            //v[i].with_lower_bound(1<<20);
+        }
         fill(a,NELEM);
 
         LOG("Doing it");
-        auto v=vmax(logger);
-        v.with_stream(stream);
-        v.with_lower_bound(1<<20);
+        
+        CUTRY(cudaMemcpyAsync(dev[0].a,a,sizeof(float)*NELEM,cudaMemcpyHostToDevice,stream[0]));
         for(int i=0;i<NREPS;++i) {
-            CUTRY(cudaMemcpyAsync(dev.a,a,sizeof(float)*NELEM,cudaMemcpyHostToDevice,stream));
-            v.compute(dev.a,NELEM);
+            int j=i%NSTREAM;
+            int jnext=(i+1)%NSTREAM;
+
+            CUTRY(cudaMemcpyAsync(dev[jnext].a,a,sizeof(float)*NELEM,cudaMemcpyHostToDevice,stream[jnext]));
+            v[j].compute(dev[j].a,NELEM);
             
         }
-        LOG("Max: %f",v.to_host());
+        for(int i=0;i<NSTREAM;++i)
+            LOG("Max %d: %f (%d)",i,v[i].to_host(),NELEM-1);
         LOG("All Done");
 
         // Cleanup (or not)

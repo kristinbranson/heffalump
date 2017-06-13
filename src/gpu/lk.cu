@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <cuda_runtime.h>
 #include "conv.h"
+#include "max.h"
 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
@@ -21,7 +22,7 @@ namespace gpu {
     }
 
     template<typename T>
-    __global__ void diff_k(float* __restrict__ out,const T * __restrict__,const T* __restrict__ b,int w,int h,int p) {
+    __global__ void diff_k(float* __restrict__ out,const T * __restrict__ a,const T* __restrict__ b,int w,int h,int p) {
         const int x=threadIdx.x+blockIdx.x*blockdim.x;
         const int y=threadIdx.y+blockIdx.y*blockdim.y;
         if(x<w && y<h) {
@@ -30,94 +31,74 @@ namespace gpu {
         }
     }
 
-    template<typename T>
-    __device__ T max(T a,T b) {return a>b?a:b;}
-
-    __device__ float warpmax(float v) {
-        // compute max across a warp
-        for(int j=1;j<16;j>>=1)
-            v=max(v,__shfl_down(v,1));
-        return v;
+    static float* sqrt_gaussian(float *k,int n,float sigma) {
+        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        const float s2=sigma*sigma;
+        const float c=(n-1)/2.0f;
+        for(auto i=0;i<n;++i) {
+            float r=i-c;
+            k[i]=sqrtf(norm*expf(-0.5f*r*r/s2));
+        }
+        return k;
     }
 
-    // Computes 1 max per block
-    //
-    // launch this as a 1d kernel
-    // lastmax is a lower-bound for the computed maximum value.
-    // FIXME: rename lastmax
-    __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, float lastmax, int n) {
-        
-        int i=threadIdx.x+blockIdx.x*blockDim.x
-        auto a=(i<n)?in[i]:lastmax;
-        if(__all(a<lastmax)) {
-            out[blockIdx.x]=lastmax;
-            return;             // FIXME: output lastmax
+    static float* gaussian_derivative(float *k,int n,float sigma) {
+        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        const float s2=sigma*sigma;
+        const float c=(n-1)/2.0f;
+        for(auto i=0;i<n;++i) {
+            float r=i-c;
+            float g=norm*expf(-0.5f*r*r/s2);
+            k[i]=-g*r/s2;
         }
-
-        __shared__ float t[32]; // assumes max of 1024 threads per block
-        const int lane=threadIdx.x&31;
-        const int warp=threadIdx.x>>5;
-        t[lane]=lastmax;
-        __threadfence_block();
-        t[warp]=warpmax(a);
-        if(warp==0)
-            out[blockIdx.x]=warpmax(t[lane]);
+        return k;
     }
-    
-    struct vmax {
-        vmax(logger_t logger): logger(logger){
-            CUTRY(logger,cudaMalloc(&tmp,1024*sizeof(float))); // max size - holds values from reduction in at most 1024 blocks
-            CUTRY(logger,cudaMalloc(&out,sizeof(float))); // holds the final reduced value
-        }
-        ~vmax() {
-            try {
-                CUTRY(logger,cudaFree(tmp));
-                CUTRY(logger,cudaFree(out));
-            } catch(const std::runtime_error& e) {
-                ERR(logger,"CUDA: %s",e.what());
-            }
-        }
-        float compute(float* v,size_t n,float lower_bound=-FLT_MAX,cudaStream_t stream=nullptr) {
-            dim3 block(32*4);
-            dim3 grid(min(1024,(n+block.x-1)/block.x)); // FIXME: this should be a max of 1024
-            vmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
-            vmax_k<<<1,grid.x,0,stream>>>(out,tmp,lower_bound,grid.x);
-        }
-    private:
-        static int min(int a,int b) { return a<b?a:b; }
-
-        float *tmp,*out;
-        int capacity;
-        cudaStream_t stream;
-        logger_t logger;
-    };
 
     struct workspace {
-        workspace(logger_t logger, enum lk_scalar_type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
+        workspace(logger_t logger, enum lk_scalar_type type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
         : logger(logger)
+        , type(type)
         , w(w), h(h), pitch(p)
         , params(params)
+        , stream(0)
         {
             CUTRY(logger,cudaMalloc(&out,bytesof_output()); 
             CUTRY(logger,cudaMemset(input,0,bytesof_input()));
             CUTRY(logger,cudaMemset(last,0,bytesof_input()));
             CUTRY(logger,cudaMemset(dt,0,w*h*sizeof(float)));
 
+            make_kernels();
+
             float *ks[]={self->kernels.derivative,self->kernels.derivative};
             unsigned nks0[]={self->kernels.nder,0};
             unsigned nks1[]={0,self->kernels.nder};
-            self->dx=conv_init(logger,w,h,w,ks,nks0);
-            self->dy=conv_init(logger,w,h,w,ks,nks1);
+            stage1.dx=conv_init(logger,w,h,p,ks,nks0);
+            stage1.dy=conv_init(logger,w,h,p,ks,nks1);
+            stage1.weight=conv_init(logger,w,h,w,ks,nks);
         }
 
         ~workspace() {
             CUTRY(logger,cudaFree(last));
             CUTRY(logger,cudaFree(out));
+
+            delete [] kernels.smoothing;
+            delete [] kernels.derivative;
         }
 
-        void compute(const float* im) {
-            CUTRY(cudaMemcpy(input,im,bytesof_input(),cudaMemcpyHostToDevice));
+        auto with_stream(cudaStream_t s) -> &workspace{
+            stream=s;
+        }
 
+        void compute(const void* im) {
+            CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,stream));
+            {
+                dim3 block(32,4);
+                dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+                diff_k<<<grid,block,0,stream>>>(dt,last,input,w,h,p);
+            }
+            conv(stage1.dx,type,input); // FIXME: use stream, use dev ptr
+            conv(stage1.dy,type,input); // FIXME: use stream, use dev ptr
+            
             Error:;
         }
 
@@ -130,9 +111,22 @@ namespace gpu {
         }
 
         void copy_last_result(void * buf,size_t nbytes) {
-            CUTRY(cudaMemcpy(buf,out,n,cudaMemcpyDeviceToHost));
+            CUTRY(logger,cudaMemcpy(buf,out,bytesof_output(),cudaMemcpyDeviceToHost));
         }
     private:
+        void make_kernels() {
+            unsigned
+                nder=(unsigned)(8*params.sigma.derivative),
+                nsmo=(unsigned)(6*params.sigma.smoothing);
+            nder=(nder/2)*2+1; // make odd
+            nsmo=(nsmo/2)*2+1; // make odd
+            kernels.smoothing=new float[nder];
+            kernels.derivative=new float[nsmooth];
+            sqrt_gaussian(kernels.smoothing,nsmooth,params.sigma.smoothing);
+            gaussian_derivative(kernel.derivative,nder,param.sigma.derivative);
+        }
+
+        enum lk_scalar_type type;
         unsigned w,h,pitch;
         logger_t logger;
         float *out,*last, *input ,*dt;
@@ -145,6 +139,11 @@ namespace gpu {
             struct conv_context dx,dy,dt;
         } stage2; // weighting and normalization
         struct lk_parameters params;
+        cudaStream_t stream;
+        struct {
+            float *smoothing,*derivative;
+            unsigned nsmooth,nder;
+        } kernels;
     };
 
 }}} // end priv::lk::gpu
