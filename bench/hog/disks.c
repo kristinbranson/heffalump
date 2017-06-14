@@ -27,8 +27,7 @@ static void* disk(double time) {
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={3,3};
-
-    // additive noise
+    
     unsigned char* buf=malloc(256*256);
     memset(buf,0,256*256);
 

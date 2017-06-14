@@ -159,14 +159,14 @@ void lk_teardown(struct lk_context *self){
     free(self->workspace);
 }
 
-extern void diff(float *out,enum lk_scalar_type type,void *a,void *b,unsigned w,unsigned h,unsigned p);
+extern void diff(float *out,enum lk_scalar_type type,const void *a,const void *b,unsigned w,unsigned h,unsigned p);
 
 // normalizes input in-place to unit magnitude
 // and returns the normalizing factor.
 static float norm_ip(float *v,int npx) {
     float *end=v+npx;
     float mag=0.0f;
-    for(float *c=v;c<end;++c) mag=max(mag,fabs(*c));
+    for(float *c=v;c<end;++c) mag=fmaxf(mag,fabsf(*c));
     for(float *c=v;c<end;++c) *c/=mag;
     return mag;
 }
@@ -250,9 +250,10 @@ void lk(struct lk_context *self, const void *im){
     memcpy(ws->last,im,bytes_per_pixel(ws->type)*ws->pitch*self->h);
 }
 
-void* lk_alloc(const struct lk_context *self, void (*alloc)(size_t nbytes)){
-    return malloc(sizeof(float)*self->w*self->h*2);
+void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)){
+    return alloc(sizeof(float)*self->w*self->h*2);
 }
+
 void lk_copy(const struct lk_context *self, float *out, size_t nbytes){
     const size_t n=sizeof(float)*self->w*self->h*2;
     CHECK(self->logger,nbytes>=n);

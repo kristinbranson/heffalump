@@ -1,16 +1,17 @@
 // FIXME: make this absmax ... i want absolute magnitude.  Can do this be adding fabsf when input is read.
 
-#include "max.h"
-#include <new>
+#include "absmax.h"
+//#include <new>
 #include <stdexcept>
 #include <cuda_runtime.h>
+#include <cstdint>
 
 #define ERR(...) logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(e) do{if(!(e)){ERR("Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 
 namespace priv {
-namespace max {
+namespace absmax {
 namespace gpu {
 
 __device__ float warpmax(float v) {
@@ -26,7 +27,7 @@ __device__ float warpmax(float v) {
 // lower bound is used 
 //   1. to initialize background values and
 //   2. to short circuit work for warps where all values are less than the lower bound
-__global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, const float lower_bound, int n) {
+__global__ void absmax_k(float * __restrict__ out,const float* __restrict__ in, const float lower_bound, int n) {
     float mx=lower_bound;
     for( // grid-stride loop
         int i=threadIdx.x+blockIdx.x*blockDim.x;
@@ -34,9 +35,6 @@ __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, co
         i+=blockDim.x*gridDim.x) 
     {
         auto a=(i<n)?fabsf(in[i]):mx;
-// The kernel is read throughput limited, so skipping work doesn't save anything
-//        if(__all(a<mx))
-//            continue;
 
         __shared__ float t[32]; // assumes max of 1024 threads per block
         const int lane=threadIdx.x&31;
@@ -44,7 +42,7 @@ __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, co
         // init the per-warp max's using one warp
         // in case we don't run with 32 warps
         t[lane]=mx;
-        __threadfence_block();
+        __threadfence(); // __threadfence_block() is insufficient
         t[warp]=warpmax(a);
         __syncthreads();
         if(warp==0)
@@ -63,9 +61,9 @@ __device__ float4 fabsf4(float4 v) {
     return make_float4(fabsf(v.x),fabsf(v.y),fabsf(v.z),fabsf(v.w));
 }
 
-// Just like vmax4, but threads use vectorized loads to do 4 elements at a time
+// Just like absmax, but threads use vectorized loads to do 4 elements at a time
 // Input and length, n,  must be aligned to 4 elements (16 bytes)
-__global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, const float lower_bound, int n) {
+__global__ void absmax4_k(float * __restrict__ out,const float4* __restrict__ in, const float lower_bound, int n) {
     #define PAYLOAD (4)
     float mx=lower_bound;
     for( // grid-stride loop
@@ -73,10 +71,7 @@ __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, 
         PAYLOAD*(i-threadIdx.x)<n; // as long as any thread in the block is in-bounds
         i+=blockDim.x*gridDim.x) 
     {
-        auto a=(PAYLOAD*i<n)?max4(fabsf4(in[i])):mx;
-        // The kernel is read throughput limited, so skipping work doesn't save anything
-        //if(__all(a<mx))
-        //    continue;
+        auto a=((PAYLOAD*i)<n)?max4(fabsf4(in[i])):mx;
 
         __shared__ float t[32]; // assumes max of 1024 threads per block
         const int lane=threadIdx.x&31;
@@ -84,7 +79,7 @@ __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, 
         // init the per-warp max's using one warp
         // in case we don't run with 32 warps
         t[lane]=mx;
-        __threadfence_block();
+        __threadfence(); // __threadfence_block() is insufficient
         t[warp]=warpmax(a);
         __syncthreads();
         if(warp==0)
@@ -98,12 +93,12 @@ __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, 
 using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
 
 
-vmax::vmax(logger_t logger): logger(logger), lower_bound(-FLT_MAX), stream(nullptr) {
+absmax_context_t::absmax_context_t(logger_t logger): logger(logger), lower_bound(-FLT_MAX), stream(nullptr) {
     CUTRY(cudaMalloc(&tmp,1024*sizeof(float))); // max size - holds values from reduction in at most 1024 blocks
     CUTRY(cudaMalloc(&out,sizeof(float))); // holds the final reduced value
 }
 
-vmax::~vmax() {
+absmax_context_t::~absmax_context_t() {
     try {
         CUTRY(cudaFree(tmp));
         CUTRY(cudaFree(out));
@@ -113,30 +108,30 @@ vmax::~vmax() {
 }
 
 // configure methods
-auto vmax::with_lower_bound(float v)   -> vmax& {
+auto absmax_context_t::with_lower_bound(float v)   -> absmax_context_t& {
     lower_bound=v; 
     return *this;
 }
 
-auto vmax::with_stream(cudaStream_t s) -> vmax& {stream=s; return *this;}
+auto absmax_context_t::with_stream(cudaStream_t s) -> absmax_context_t& {stream=s; return *this;}
 
 // work
 int MIN(int a,int b) { return a<b?a:b; }
 
-auto vmax::compute(float* v,int n) const -> const vmax& {
+auto absmax_context_t::compute(float* v,int n) const -> const absmax_context_t& {
     dim3 block(32*4);
     dim3 grid(MIN(1024,(n+block.x-1)/block.x)); // use a max of 1024 blocks
     // Use vectorized loads for a slight speed increase (~33%)
     // when alignment conditions are satisfied
-    if((n&0x3)==0 && (reinterpret_cast<size_t>(v)&0x3)==0)
-        vmax4_k<<<grid,block,0,stream>>>(tmp,reinterpret_cast<float4*>(v),lower_bound,n);
+    if((n&0x3)==0 && (reinterpret_cast<uint64_t>(v)&0x3)==0)
+        absmax4_k<<<grid,block,0,stream>>>(tmp,reinterpret_cast<float4*>(v),lower_bound,n);
     else
-        vmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
-    vmax_k<<<1,32*((grid.x+31)/32),0,stream>>>(out,tmp,lower_bound,grid.x);
+        absmax_k<<<grid,block,0,stream>>>(tmp,v,lower_bound,n);
+    absmax_k<<<1,32*((grid.x+31)/32),0,stream>>>(out,tmp,lower_bound,grid.x);
     return *this;
 }
 
-float vmax::to_host() const {
+float absmax_context_t::to_host() const {
     float v;
     CUTRY(cudaMemcpyAsync(&v,out,sizeof(v),cudaMemcpyDeviceToHost,stream));
     CUTRY(cudaStreamSynchronize(stream));

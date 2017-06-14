@@ -5,7 +5,7 @@ cuda_add_library(${tgt} STATIC
     conv.h gpu/conv.cu
     gpu/gradientHist.h gpu/gradientHist.cu
     gpu/hog.c
-    gpu/max.h gpu/max.cu
+    gpu/absmax.h gpu/absmax.cu
     lk.h gpu/lk.cu
 )
 target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})

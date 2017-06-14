@@ -133,11 +133,11 @@ static void maybe_resize_verts(int nbins, int ncellw, int ncellh) {
 static void compute_verts(float x0,float y0, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const float *hogdata) {
     // maybe_resize_verts will ensure memory is init'd correctly regardless of app state.
     const struct context *self=&CTX; 
-    maybe_resize_verts(shape->bin,shape->x,shape->y);
-    int ncell=shape->x*shape->y;
+    maybe_resize_verts((int)shape->bin,(int)shape->x,(int)shape->y);
+    int ncell=(int)(shape->x*shape->y);
     const float dth=6.2831853071f/(float)shape->bin;
     int ivert=0;
-    const int nverts_per_cell=2*shape->bin+1;
+    const int nverts_per_cell=(int)(2*shape->bin+1);
     CTX.nverts_per_cell=nverts_per_cell;
     int icell=0;
     for(int ycell=0;ycell<shape->y;++ycell) {

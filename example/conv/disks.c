@@ -59,8 +59,8 @@ static void* disk(double time) {
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
-        float cx=((float)W)*(0.25f*sin(time*6.28)+0.5f),
-              cy=((float)H)*(0.25f*cos(time*6.28)+0.5f);
+        float cx=((float)W)*(0.25f*sinf(time*6.28f)+0.5f),
+              cy=((float)H)*(0.25f*cosf(time*6.28f)+0.5f);
         const float r=0.05f*W;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {
@@ -82,8 +82,8 @@ static void* disk(double time) {
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
-        float cx=((float)W)*(0.125f*sin(-2*time*6.28)+0.5f),
-              cy=((float)H)*(0.125f*cos(-2*time*6.28)+0.5f);
+        float cx=((float)W)*(0.125f*sinf(-2*time*6.28f)+0.5f),
+              cy=((float)H)*(0.125f*cosf(-2*time*6.28f)+0.5f);
         const float r=0.01f*W;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {
@@ -105,8 +105,8 @@ static void* disk(double time) {
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
-        float cx=((float)W)*(0.1875f*sin( 7*time*6.28)+0.5f),
-              cy=((float)H)*(0.1875f*cos(-3*time*6.28)+0.5f);
+        float cx=((float)W)*(0.1875f*sinf( 7.0f*time*6.28f)+0.5f),
+              cy=((float)H)*(0.1875f*cosf(-3.0f*time*6.28f)+0.5f);
         const float r=0.1f*W;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {

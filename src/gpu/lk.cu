@@ -3,12 +3,14 @@
 #include <stdexcept>
 #include <cuda_runtime.h>
 #include "conv.h"
-#include "max.h"
+#include "absmax.h"
 #include <stdint.h> // uint64_t
 
+#define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#define CUTRY_NOTHROW(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode));}} while(0)
 
 
 namespace priv {
@@ -31,12 +33,19 @@ namespace gpu {
             out[x+y*w]=a[i]-b[i];
         }
     }
+    
+//    __global__ void mult_k(float* __restrict__ out,const float * __restrict__ a,const float* __restrict__ b,int n) {
+//        const int i=threadIdx.x+blockIdx.x*blockDim.x;
+//        if(i<n)
+//            out[i]=a[i]*b[i];
+//    }
 
-    template<typename T>
-    __global__ void mult_k(float* __restrict__ out,const T * __restrict__ a,const T* __restrict__ b,int n) {
+    __global__ void mult4_k(float4* __restrict__ out,const float4 * __restrict__ a,const float4* __restrict__ b,int n) {
         const int i=threadIdx.x+blockIdx.x*blockDim.x;
-        if(i<n)
-            out[i]=a[i]*b[i];
+        if(i<n) {
+            const float4 aa=a[i],bb=b[i];
+            out[i]=make_float4(aa.x*bb.x,aa.y*bb.y,aa.z*bb.z,aa.w*bb.w);
+        }
     }
 
     template<typename T>
@@ -67,12 +76,18 @@ namespace gpu {
         if(i>=n)
             return;
 
+#if 0
+        const float mx=92.0f; //magx[0];
+        const float my=92.0f; //magy[0];
+        const float mt=255.0f; //magt[0];
+#else
         const float mx=magx[0];
         const float my=magy[0];
         const float mt=magt[0];
-        const float normx=1.0f/mx;
-        const float normy=1.0f/my;
-        const float normt=1.0f/mt;
+#endif
+        const float normx=1.0f/(mx+1e-3f);
+        const float normy=1.0f/(my+1e-3f);
+        const float normt=1.0f/(mt+1e-3f);
         const float xunits=0.5f*(mx*mx+my*my)*mt/(mx*my*my);
         const float yunits=0.5f*(mx*mx+my*my)*mt/(mx*mx*my);
 
@@ -83,6 +98,7 @@ namespace gpu {
         const float yt=-Iyt[i]*normy*normt;
         
         const float det=xx*yy-xy*xy;
+        #if 1
         if(det>1e-5) {
             out[i]=make_float2(
                 (xunits/det)*(xx*xt+xy*yt),
@@ -90,6 +106,9 @@ namespace gpu {
         } else {
             out[i]=make_float2(0.0f,0.0f);
         }
+        #else
+        out[i]=make_float2(mt,mt);
+        #endif
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
@@ -119,10 +138,11 @@ namespace gpu {
         workspace(logger_t logger, enum lk_scalar_type type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
         : logger(logger)
         , type((conv_scalar_type)type)
-        , vmax(logger)
+        , mdx(logger)
+        , mdy(logger)
+        , mdt(logger)
         , w(w), h(h), pitch(p)
         , params(params)
-        , stream(nullptr)
         {
             CUTRY(logger,cudaMalloc(&out,bytesof_output()));
             CUTRY(logger,cudaMalloc(&input,bytesof_input()));
@@ -157,40 +177,84 @@ namespace gpu {
                 stage3.yt=conv_init(logger,w,h,w,ks,nks);
             }
 
-            vmax.with_lower_bound(0.0f);
+            mdx.with_lower_bound(0.0f);
+            mdy.with_lower_bound(0.0f);
+            mdt.with_lower_bound(0.0f);
+
+            CUTRY(logger,cudaEventCreate(&input_ready,cudaEventDisableTiming));
+            CUTRY(logger,cudaEventCreate(&stage1.x_done,cudaEventDisableTiming));
+            CUTRY(logger,cudaEventCreate(&stage1.y_done,cudaEventDisableTiming));
+            CUTRY(logger,cudaEventCreate(&stage1.t_done,cudaEventDisableTiming));
+            CUTRY(logger,cudaEventCreate(&stage3.done,cudaEventDisableTiming));
+
+            for(int i=0;i<5;++i)
+                CUTRY(logger,cudaStreamCreateWithFlags(&streams[i],cudaStreamNonBlocking));
+
+            conv_with_stream(&stage1.dx,streams[0]);
+            conv_with_stream(&stage1.dy,streams[1]);
+            mdx.with_stream(streams[0]);
+            mdy.with_stream(streams[1]);
+            mdt.with_stream(streams[2]);            
+            conv_with_stream(&stage3.xx,streams[0]);
+            conv_with_stream(&stage3.xy,streams[1]);
+            conv_with_stream(&stage3.yy,streams[2]);
+            conv_with_stream(&stage3.xt,streams[3]);
+            conv_with_stream(&stage3.yt,streams[4]);
 
         }
 
         ~workspace() {
-            CUTRY(logger,cudaFree(last));
-            CUTRY(logger,cudaFree(out));
+            try {
+                for(int i=0;i<5;++i) {
+                    CUTRY_NOTHROW(logger,cudaStreamSynchronize(streams[i]));
+                    CUTRY_NOTHROW(logger,cudaStreamDestroy(streams[i]));
+                }
+                CUTRY_NOTHROW(logger,cudaEventDestroy(input_ready));
+                CUTRY_NOTHROW(logger,cudaEventDestroy(stage1.x_done));
+                CUTRY_NOTHROW(logger,cudaEventDestroy(stage1.y_done));
+                CUTRY_NOTHROW(logger,cudaEventDestroy(stage1.t_done));
+                CUTRY_NOTHROW(logger,cudaEventDestroy(stage3.done));
 
-            delete [] kernels.smoothing;
-            delete [] kernels.derivative;
-        }
+                CUTRY_NOTHROW(logger,cudaFree(last));
+                CUTRY_NOTHROW(logger,cudaFree(input));
+                CUTRY_NOTHROW(logger,cudaFree(out));
 
-        auto with_stream(cudaStream_t s) -> void {
-            stream=s;
-            vmax.with_stream(s);
-            conv_with_stream(&stage1.dx,s);
-            conv_with_stream(&stage1.dy,s);
-            conv_with_stream(&stage3.xx,s);
-            conv_with_stream(&stage3.xy,s);
-            conv_with_stream(&stage3.yy,s);
-            conv_with_stream(&stage3.xt,s);
-            conv_with_stream(&stage3.yt,s);
+                delete [] kernels.smoothing;
+                delete [] kernels.derivative;
+
+                CUTRY_NOTHROW(logger,cudaFree(stage1.dt));
+                conv_teardown(&stage1.dx);
+                conv_teardown(&stage1.dy);
+
+                CUTRY_NOTHROW(logger,cudaFree(stage2.xx));
+                CUTRY_NOTHROW(logger,cudaFree(stage2.xy));
+                CUTRY_NOTHROW(logger,cudaFree(stage2.yy));
+                CUTRY_NOTHROW(logger,cudaFree(stage2.xt));
+                CUTRY_NOTHROW(logger,cudaFree(stage2.yt));
+
+                conv_teardown(&stage3.xx);
+                conv_teardown(&stage3.xy);
+                conv_teardown(&stage3.yy);
+                conv_teardown(&stage3.xt);
+                conv_teardown(&stage3.yt);
+
+            } catch(const std::runtime_error& e) {
+                ERR(logger,"LK - %s",e.what());
+            }
         }
 
         void compute(const void* im) {
 #define CEIL(num,den) (((num)+(den)-1)/(den))
 
-            CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,stream));
-
+            CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,streams[0]));
+            CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
+            CUTRY(logger,cudaStreamWaitEvent(streams[1],input_ready,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[2],input_ready,0));
             {
 
                 dim3 block(32,4);
                 dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
-                diff_k<<<grid,block,0,stream>>>(stage1.dt,input,last,w,h,pitch);
+                diff_k<<<grid,block,0,streams[2]>>>(stage1.dt,input,last,w,h,pitch);
 
                 // copy kernel uses vectorized load/stores
 #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
@@ -199,31 +263,48 @@ namespace gpu {
                 const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
                 CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
 #undef aligned_to
-                cpy_k<<<CEIL(pitch*h,128*PAYLOAD),128,0,stream>>>(last,input,pitch*h);
+                cpy_k<<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>(last,input,pitch*h);
             }
-
             conv_no_copy(&stage1.dx,type,input);
-            conv_no_copy(&stage1.dy,type,input);
+            conv_no_copy(&stage1.dy,type,input);          
 
-            
             // Compute max magnitude for normalizing amplitudes
-            // to avoid denormals.
+            // to avoid denormals (~7% of runtime cost)
             //
             // Just grab device pointers to the max magnitudes 
             // to avoid transfer-cost/sync.
             const unsigned npx=w*h;
-            auto magx=vmax.compute(stage1.dx.out,npx).out;
-            auto magy=vmax.compute(stage1.dy.out,npx).out;
-            auto magt=vmax.compute(stage1.dt,npx).out;
+            mdx.compute(stage1.dx.out,npx);
+            mdy.compute(stage1.dy.out,npx);
+            mdt.compute(stage1.dt,npx);
+
+            CUTRY(logger,cudaEventRecord(stage1.x_done,streams[0]));
+            CUTRY(logger,cudaEventRecord(stage1.y_done,streams[1]));
+            CUTRY(logger,cudaEventRecord(stage1.t_done,streams[2]));
+
+            // syncs to start stage 2
+            // for out=left*right
+            // left dependencies
+            CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.x_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.x_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.y_done,0));
+            // right dependencies
+            CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.y_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.t_done,0));
+            CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.t_done,0));
 
             {
                 dim3 block(32*4);
                 dim3 grid(CEIL(npx,block.x));
-                mult_k<<<grid,block,0,stream>>>(stage2.xx,stage1.dx.out,stage1.dx.out,npx);
-                mult_k<<<grid,block,0,stream>>>(stage2.xy,stage1.dx.out,stage1.dy.out,npx);
-                mult_k<<<grid,block,0,stream>>>(stage2.yy,stage1.dy.out,stage1.dy.out,npx);
-                mult_k<<<grid,block,0,stream>>>(stage2.xt,stage1.dx.out,stage1.dt,npx);
-                mult_k<<<grid,block,0,stream>>>(stage2.yt,stage1.dy.out,stage1.dt,npx);
+                mult4_k<<<grid,block,0,streams[0]>>>((float4*)stage2.xx,(float4*)stage1.dx.out,(float4*)stage1.dx.out,npx/4);
+                mult4_k<<<grid,block,0,streams[1]>>>((float4*)stage2.xy,(float4*)stage1.dx.out,(float4*)stage1.dy.out,npx/4);
+                mult4_k<<<grid,block,0,streams[2]>>>((float4*)stage2.yy,(float4*)stage1.dy.out,(float4*)stage1.dy.out,npx/4);
+                mult4_k<<<grid,block,0,streams[3]>>>((float4*)stage2.xt,(float4*)stage1.dx.out,(float4*)stage1.dt,npx/4);
+                mult4_k<<<grid,block,0,streams[4]>>>((float4*)stage2.yt,(float4*)stage1.dy.out,(float4*)stage1.dt,npx/4);
             }
             conv_no_copy(&stage3.xx,conv_f32,stage2.xx);
             conv_no_copy(&stage3.xy,conv_f32,stage2.xy);
@@ -231,17 +312,26 @@ namespace gpu {
             conv_no_copy(&stage3.xt,conv_f32,stage2.xt);
             conv_no_copy(&stage3.yt,conv_f32,stage2.yt);
 
+            // make sure stage3 is done
+            for(int i=0;i<4;++i) {
+                CUTRY(logger,cudaEventRecord(stage3.done,streams[i]));
+                CUTRY(logger,cudaStreamWaitEvent(streams[i+1],stage3.done,0));
+            }
+
+//            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
             {
                 int n=w*h;
                 dim3 block(32*4);
                 dim3 grid(CEIL(n,block.x));
-                solve_k<<<grid,block,0,stream>>>(out,
+                solve_k<<<grid,block,0,streams[4]>>>(out,
                     stage3.xx.out,
                     stage3.xy.out,
                     stage3.yy.out,
                     stage3.xt.out,
                     stage3.yt.out,
-                    magx,magy,magt,n);
+                    mdx.out,mdy.out,mdt.out,
+                    n);
+
             }
 #undef CEIL            
         }
@@ -259,9 +349,10 @@ namespace gpu {
         }
 
         void copy_last_result(void * buf,size_t nbytes) const {
-            CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,stream));
-//            CUTRY(logger,cudaMemcpyAsync(buf,stage3.xt.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,stream));
-            CUTRY(logger,cudaStreamSynchronize(stream));
+            CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+//            CUTRY(logger,cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
+//            CUTRY(logger,cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+            CUTRY(logger,cudaStreamSynchronize(streams[4]));
         }
 
     private:
@@ -285,18 +376,22 @@ namespace gpu {
         float *last,*input;
         struct  {
             struct conv_context dx,dy;        
-            float *dt;
+            float *dt;       
+            cudaEvent_t x_done,y_done,t_done;
         } stage1; // initial computation of gradient in x,y, and t
-        priv::max::gpu::vmax vmax;
+        
+        priv::absmax::gpu::absmax_context_t mdx,mdy,mdt;
 
-        struct {
+        struct {            
             float *xx,*xy,*yy,*xt,*yt;
         } stage2; // weighting and normalization
         struct {
             conv_context xx,xy,yy,xt,yt;
+            cudaEvent_t done;
         } stage3;
         struct lk_parameters params;
-        cudaStream_t stream;
+        cudaStream_t streams[5];
+        cudaEvent_t input_ready;
         struct {
             float *smoothing,*derivative;
             unsigned nsmooth,nder;

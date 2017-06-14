@@ -58,8 +58,8 @@ namespace priv {
 
         /// WARNING: this destructor can throw
         ~workspace() {
-            CUTRY(cudaFree(in));
-            CUTRY(cudaFree(out));
+//            CUTRY(cudaFree(in));  // FIXME: leaks this... sometimes 'in' is not owned by this object
+            CUTRY(cudaFree(out)); 
             CUTRY(cudaFree(tmp));
             CUTRY(cudaFree(kernels[0]));
             CUTRY(cudaFree(kernels[1]));
