@@ -1,3 +1,5 @@
+// FIXME: make this absmax ... i want absolute magnitude.  Can do this be adding fabsf when input is read.
+
 #include "max.h"
 #include <new>
 #include <stdexcept>
@@ -31,7 +33,7 @@ __global__ void vmax_k(float * __restrict__ out,const float* __restrict__ in, co
         (i-threadIdx.x)<n; // as long as any thread in the block is in-bounds
         i+=blockDim.x*gridDim.x) 
     {
-        auto a=(i<n)?in[i]:mx;
+        auto a=(i<n)?fabsf(in[i]):mx;
 // The kernel is read throughput limited, so skipping work doesn't save anything
 //        if(__all(a<mx))
 //            continue;
@@ -57,6 +59,10 @@ __device__ float max4(float4 v) {
     return fmaxf(fmaxf(v.x,v.y),fmaxf(v.z,v.w));
 }
 
+__device__ float4 fabsf4(float4 v) {
+    return make_float4(fabsf(v.x),fabsf(v.y),fabsf(v.z),fabsf(v.w));
+}
+
 // Just like vmax4, but threads use vectorized loads to do 4 elements at a time
 // Input and length, n,  must be aligned to 4 elements (16 bytes)
 __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, const float lower_bound, int n) {
@@ -67,7 +73,7 @@ __global__ void vmax4_k(float * __restrict__ out,const float4* __restrict__ in, 
         PAYLOAD*(i-threadIdx.x)<n; // as long as any thread in the block is in-bounds
         i+=blockDim.x*gridDim.x) 
     {
-        auto a=(PAYLOAD*i<n)?max4(in[i]):mx;
+        auto a=(PAYLOAD*i<n)?max4(fabsf4(in[i])):mx;
         // The kernel is read throughput limited, so skipping work doesn't save anything
         //if(__all(a<mx))
         //    continue;
@@ -115,11 +121,11 @@ auto vmax::with_lower_bound(float v)   -> vmax& {
 auto vmax::with_stream(cudaStream_t s) -> vmax& {stream=s; return *this;}
 
 // work
-int min(int a,int b) { return a<b?a:b; }
+int MIN(int a,int b) { return a<b?a:b; }
 
 auto vmax::compute(float* v,int n) const -> const vmax& {
     dim3 block(32*4);
-    dim3 grid(min(1024,(n+block.x-1)/block.x)); // use a max of 1024 blocks
+    dim3 grid(MIN(1024,(n+block.x-1)/block.x)); // use a max of 1024 blocks
     // Use vectorized loads for a slight speed increase (~33%)
     // when alignment conditions are satisfied
     if((n&0x3)==0 && (reinterpret_cast<size_t>(v)&0x3)==0)

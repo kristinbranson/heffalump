@@ -2,9 +2,9 @@
 #include <stdexcept>
 #include <cstdint>
 #include <cuda_runtime.h>
-#include "../conv.h"
+#include "conv.h"
 
-#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {throw cudaGetErrorString(ecode);}} while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define CHECK(e) do{if(!(e)) throw(std::runtime_error(#e));}while(0)
 
@@ -37,7 +37,9 @@ namespace priv {
 
     /// Manages working storage and resources
     struct workspace {
-        workspace(const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p) {
+        workspace(const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p)
+        : stream(nullptr) 
+        {
             nkernel[0]=nks[0];
             nkernel[1]=nks[1];
             in=nullptr;
@@ -46,9 +48,9 @@ namespace priv {
             CUTRY(cudaMalloc(&tmp,priv::sizeof_output(w,h)));
             CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nks[0]));
             CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nks[1]));
+
             CUTRY(cudaMemcpy(kernels[0],ks[0],nks[0]*sizeof(float),cudaMemcpyHostToDevice));
             CUTRY(cudaMemcpy(kernels[1],ks[1],nks[1]*sizeof(float),cudaMemcpyHostToDevice));
-
 
             CUTRY(cudaEventCreate(&start));
             CUTRY(cudaEventCreate(&stop));
@@ -67,14 +69,22 @@ namespace priv {
         }
 
         template<typename T>
-        void load_input(const T* host_input,unsigned p,unsigned h) {
+        void load_input(const T* input,unsigned p,unsigned h, int is_dev_ptr) {
             size_t n=sizeof(T)*p*h;
-            if(n>nbytes_in) {// realloc                
+            if(!is_dev_ptr) {
+                if(n>nbytes_in) {// realloc                
+                    nbytes_in=n;
+                    CUTRY(cudaFree(in)); // noop if in is null
+                    CUTRY(cudaMalloc(&in,nbytes_in));                
+                }
+                CUTRY(cudaMemcpyAsync(in,input,n,cudaMemcpyHostToDevice,stream));
+            } else {
+                // FIXME: possibly leaks any initially allocated input buffer
+                //        see design issues in issue tracker
+
+                in=(void*)input;
                 nbytes_in=n;
-                CUTRY(cudaFree(in)); // noop if in is null
-                CUTRY(cudaMalloc(&in,nbytes_in));                
             }
-            CUTRY(cudaMemcpy(in,host_input,n,cudaMemcpyHostToDevice));
         }
 
         void  *in;         ///< device pointer
@@ -82,6 +92,8 @@ namespace priv {
         float *out,*tmp;        ///< device pointer
         float *kernels[2]; ///< device pointers
         unsigned nkernel[2];
+
+        cudaStream_t stream;
 
         cudaEvent_t start,stop; ///< profiling
         float last_elapsed_ms;
@@ -269,7 +281,7 @@ namespace priv {
         #undef PAYLOAD
     }
 
-    template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int p,const float *k,int nk) {
+    template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int p,const float *k,int nk,cudaStream_t stream) {
         #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
         /*    PAYLOAD by bz  (ny+2A) | by*bz=8 
          * u8      16  2  4     128
@@ -281,10 +293,10 @@ namespace priv {
         const int A=(nk-1)/2;
         const int ny=th.z*32-2*A;
         dim3 grid((w+31)/32,(h+ny-1)/ny,1);
-        conv_nonunit_stride_k<T><<<grid,th>>>(out,in,w,h,p,k,nk);
+        conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,p,k,nk);
     }
 
-    template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int p,float *k,int nk) {        
+    template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int p,float *k,int nk,cudaStream_t stream) {        
         CHECK(nk&1==1);
 
         dim3 th(32,BH);
@@ -295,17 +307,17 @@ namespace priv {
         #undef PAYLOAD        
         CHECK(nx>0); // if this fails, your kernel is too big :(
         dim3 grid((w+nx-1)/nx,(h+BH-1)/BH);
-        conv_unit_stride_k<T,32,BH><<<grid,th>>>(out,in,w,p,k,nk);
+        conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,p,k,nk);
     }
 
     /// 2d convolution
-    template<typename T> void conv(struct conv_context *self,const T* input) {
+    template<typename T> void conv(struct conv_context *self,const T* input, int is_dev_ptr) {
         auto ws=static_cast<workspace*>(self->workspace);
-        ws->load_input<T>(input,self->pitch,self->h);
+        ws->load_input<T>(input,self->pitch,self->h,is_dev_ptr);
         CHECK(self->w==self->pitch); // TODO: relax this/test this
         
 
-        CUTRY(cudaEventRecord(ws->start));
+        CUTRY(cudaEventRecord(ws->start,ws->stream));
 #if 0
         conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
                                self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
@@ -313,28 +325,28 @@ namespace priv {
 
         if(ws->nkernel[0]>0&&ws->nkernel[1]>0) {
             conv_unit_stride<T,4>(ws->tmp,reinterpret_cast<T*>(ws->in),
-                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0]);
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
             conv_nonunit_stride<f32>(ws->out,ws->tmp,
-                                       self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
+                                       self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
         } else if(ws->nkernel[0]>0) {
             conv_unit_stride<T,4>(ws->out,reinterpret_cast<T*>(ws->in),
-                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0]);
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
         } else if(ws->nkernel[1]>0) {
             conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
-                                  self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
+                                   self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
         } else {
             // nothing to do I guess?
             // cast to float?
-
+            throw std::runtime_error("Not implemented");
             // TODO
         }
 #endif
 
 
-        CUTRY(cudaEventRecord(ws->stop));
+        CUTRY(cudaEventRecord(ws->stop,ws->stream));
 
-        CUTRY(cudaEventSynchronize(ws->stop));
-        CUTRY(cudaEventElapsedTime(&ws->last_elapsed_ms,ws->start,ws->stop));
+//        CUTRY(cudaEventSynchronize(ws->stop));
+//        CUTRY(cudaEventElapsedTime(&ws->last_elapsed_ms,ws->start,ws->stop));
     }
 }
 
@@ -379,20 +391,24 @@ void conv_teardown(struct conv_context *self) {
     }
 }
 
-void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){    
-    switch(type) {
-#define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im); break
-        CASE(u8);
-        CASE(u16);
-        CASE(u32);
-        CASE(u64);
-        CASE(i8);
-        CASE(i16);
-        CASE(i32);
-        CASE(i64);
-        CASE(f32);
-        CASE(f64);
-#undef CASE
+void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){
+    try {
+        switch(type) {
+    #define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im,0); break
+            CASE(u8);
+            CASE(u16);
+            CASE(u32);
+            CASE(u64);
+            CASE(i8);
+            CASE(i16);
+            CASE(i32);
+            CASE(i64);
+            CASE(f32);
+            CASE(f64);
+    #undef CASE
+        }
+    } catch(const std::runtime_error &e) {
+        ERR(self->logger,"CUDA: %s",e.what());
     }
 }
 
@@ -403,8 +419,37 @@ void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes))
 void  conv_copy(const struct conv_context *self, float *out){ 
     try {
         auto ws=static_cast<priv::workspace*>(self->workspace);
-        CUTRY(cudaMemcpy(out,ws->out,priv::sizeof_output(self),cudaMemcpyDeviceToHost));
+        CUTRY(cudaMemcpyAsync(out,ws->out,priv::sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
+        CUTRY(cudaStreamSynchronize(ws->stream));
     } catch(const char* emsg) {
         ERR(self->logger,emsg);
+    }
+}
+
+// CUDA specific usage
+#include <cuda_runtime.h>
+void conv_with_stream(const struct conv_context *self,cudaStream_t stream) {
+    auto ws=static_cast<priv::workspace*>(self->workspace);
+    ws->stream=stream;
+}
+
+void conv_no_copy(struct conv_context *self,enum conv_scalar_type type,const void *im) {
+    try {
+        switch(type) {
+#define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im,1); break
+            CASE(u8);
+            CASE(u16);
+            CASE(u32);
+            CASE(u64);
+            CASE(i8);
+            CASE(i16);
+            CASE(i32);
+            CASE(i64);
+            CASE(f32);
+            CASE(f64);
+#undef CASE
+        }
+    } catch(const std::runtime_error &e) {
+        ERR(self->logger,"CUDA: %s",e.what());
     }
 }

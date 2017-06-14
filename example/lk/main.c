@@ -58,7 +58,7 @@ static float* disk(double time) {
     static struct conv_context ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
-    static unsigned nks[]={0,0};
+    static unsigned nks[]={1,1};
     if(!out) {
         ctx=conv_init(logger,256,256,256,ks,nks);        
         out=conv_alloc(&ctx,malloc);
@@ -68,7 +68,7 @@ static float* disk(double time) {
     // additive noise
     unsigned char* buf=im();
     for(int i=0;i<256*256;++i)
-        buf[i]*=0.0;
+        buf[i]*=0.1;
 
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
@@ -150,7 +150,6 @@ static void autocontrast(const float *out,int n) {
         mx=max(mx,*c);
     }
     imshow_contrast(imshow_f32,mn,mx);
-
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {  
@@ -178,6 +177,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         acc+=(float)toc(&clock);
         
         lk_copy(&ctx,out,2*ctx.w*ctx.h*sizeof(float));
+
+//        autocontrast(out,ctx.w*ctx.h);
+//        imshow(imshow_f32,ctx.w,ctx.h,out);
+
         autocontrast(out,ctx.w*ctx.h*2);
         imshow(imshow_2f32,ctx.w,ctx.h,out);
 #endif

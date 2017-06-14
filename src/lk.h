@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+#include <stdlib.h> // size_t
+
 enum lk_scalar_type {
     lk_u8,
     lk_u16,

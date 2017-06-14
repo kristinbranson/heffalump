@@ -3,6 +3,11 @@
 #include <stdexcept>
 #include <cuda_runtime.h>
 
+#ifdef min
+#undef min
+#undef max
+#endif
+
 #define ERR(...) logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(e) do{if(!(e)){ERR("Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
@@ -30,7 +35,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 __device__ float warpmax(float v) {
     // compute max across a warp
     for(int j=16;j>0;j>>=1)
-        v=max(v,__shfl_down(v,j));
+        v=fmaxf(v,__shfl_down(v,j));
     return v;
 }
 
