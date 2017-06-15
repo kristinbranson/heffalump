@@ -133,9 +133,11 @@ void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nb
     return alloc(features_nbytes(self));
 }
 
-void hof_features_copy(const struct hof_context *self, void *buf) {
+void hof_features_copy(const struct hof_context *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
+    CHECK(features_nbytes(self)<nbytes);
     memcpy(buf,ws->features,features_nbytes(self));
+    Error:;
 }
 
 

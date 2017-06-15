@@ -182,7 +182,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hof(&ctx,input);
         acc+=(float)toc(&clock);
         
-        hof_features_copy(&ctx,out);
+        hof_features_copy(&ctx,out,256*256*8*sizeof(float));
         struct hog_feature_dims shape,strides;
         hof_features_shape(&ctx,&shape);
         hof_features_strides(&ctx,&strides);

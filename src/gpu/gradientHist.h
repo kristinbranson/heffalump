@@ -47,7 +47,7 @@ extern "C"{
     /// Or, more precisely, the index of an item at r=(x,y,z) is dot(r,strides).
     ///
     /// The last size is the total number of elements in the volume.
-    void GradientHistogramyOutputShape(const struct gradientHistogram *self,unsigned shape[3],unsigned strides[4]);
+    void GradientHistogramOutputShape(const struct gradientHistogram *self,unsigned shape[3],unsigned strides[4]);
 
 #ifdef __cplusplus
 }

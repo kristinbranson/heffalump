@@ -52,7 +52,7 @@ void hof(
     const void *input);
 
 void* hof_features_alloc(const struct hof_context *context,void* (*alloc)(size_t nbytes));
-void  hof_features_copy(const struct hof_context *context, void *buf);
+void  hof_features_copy(const struct hof_context *context, void *buf,size_t nbytes);
 
 
 /**

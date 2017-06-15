@@ -98,7 +98,6 @@ namespace gpu {
         const float yt=-Iyt[i]*normy*normt;
         
         const float det=xx*yy-xy*xy;
-        #if 1
         if(det>1e-5) {
             out[i]=make_float2(
                 (xunits/det)*(xx*xt+xy*yt),
@@ -106,9 +105,6 @@ namespace gpu {
         } else {
             out[i]=make_float2(0.0f,0.0f);
         }
-        #else
-        out[i]=make_float2(mt,mt);
-        #endif
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
