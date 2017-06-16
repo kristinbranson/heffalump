@@ -100,9 +100,13 @@ void hof_teardown(struct hof_context *self) {
 
 void hof(struct hof_context *self,const void* input) {
     struct workspace* ws=(struct workspace*)self->workspace;
+    struct lk_output_dims strides;
     
     // Compute gradients and convert to polar
     lk(&ws->lk,input);
+    lk_output_strides(&ws->lk,&strides);
+    CHECK(strides.v==1); // programmer sanity check: we assume something about the memory order after this
+
     polar_ip(ws->lk.result,ws->lk.result+1,2,ws->lk.w*ws->lk.h);
 
     // magnitude and orientation are on inner dimension right now ( size(MO)=[2 w h] ).
@@ -128,7 +132,6 @@ void hof(struct hof_context *self,const void* input) {
 Error:;
 }
 
-
 void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nbytes)) {
     return alloc(features_nbytes(self));
 }
@@ -139,7 +142,6 @@ void hof_features_copy(const struct hof_context *self, void *buf,size_t nbytes) 
     memcpy(buf,ws->features,features_nbytes(self));
     Error:;
 }
-
 
 void hof_features_strides(const struct hof_context *self,struct hog_feature_dims *strides) {
     struct hog_feature_dims shape;

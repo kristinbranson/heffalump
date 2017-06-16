@@ -260,3 +260,17 @@ void lk_copy(const struct lk_context *self, float *out, size_t nbytes){
     memcpy(out,self->result,n);
 Error:;
 }
+
+
+void lk_output_strides(const struct lk_context *self,struct lk_output_dims* strides) {
+    struct lk_output_dims s={.x=2,.y=2*self->w,.v=1};
+    *strides=s;
+}
+
+/**
+* `shape` describes the dimensions of the 3d array of computed velocities.
+*/
+void lk_output_shape(const struct lk_context *self,struct lk_output_dims* shape) {
+    struct lk_output_dims s={.x=self->w,.y=self->h,.v=2};
+    *shape=s;
+}

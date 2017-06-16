@@ -164,8 +164,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.type=hof_u8,.w=256,.h=256,.pitch=256}, // need this to reserve memory for 1 time point
         .cell={16,16},.nbins=8};
-    struct hof_context ctx=
-        hof_init(logger,params,256,256);
+    struct hof_context ctx=hof_init(logger,params);
     float* out=hof_features_alloc(&ctx,malloc);
 
     hogshow_set_attr(1,params.cell.w,params.cell.h);
@@ -187,8 +186,16 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hof_features_shape(&ctx,&shape);
         hof_features_strides(&ctx,&strides);
 
+#if 0
+        imshow_contrast(imshow_u8,0,255);
+        imshow(imshow_u8,256,256,input);
+#elif 1
+        autocontrast(out,16*16*8);
+        imshow(imshow_f32,16,16*8,out);
+#else
         hogshow(0,0,&shape,&strides,out);
         imshow(imshow_u8,256,256,input);
+#endif
 
         ++nframes;
     }

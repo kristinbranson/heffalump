@@ -15,7 +15,7 @@ struct workspace {
 static size_t features_nelem(const struct hog_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     unsigned shape[3],strides[4];
-    GradientHistogramyOutputShape(&ws->gh,shape,strides);
+    GradientHistogramOutputShape(&ws->gh,shape,strides);
     return strides[3];
 }
 
@@ -73,7 +73,7 @@ void hog_teardown(struct hog_context *self) {
 void hog(struct hog_context *self,const struct hog_image image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
-    // Compute gradients and convert to polar
+    // Compute gradients
     conv(&ws->dx,image.type,image.buf);
     conv(&ws->dy,image.type,image.buf);
     GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
@@ -93,7 +93,7 @@ void hog_features_copy(const struct hog_context *self, void *buf) {
 void hog_features_strides(const struct hog_context *self,struct hog_feature_dims *strides) {
     struct workspace *ws=(struct workspace*)self->workspace;
     unsigned sh[3],st[4];
-    GradientHistogramyOutputShape(&ws->gh,sh,st);
+    GradientHistogramOutputShape(&ws->gh,sh,st);
 
     *strides=(struct hog_feature_dims) {
         .bin=st[2],
@@ -105,7 +105,7 @@ void hog_features_strides(const struct hog_context *self,struct hog_feature_dims
 void hog_features_shape(const struct hog_context *self,struct hog_feature_dims *shape) {
     struct workspace *ws=(struct workspace*)self->workspace;
     unsigned sh[3],st[4];
-    GradientHistogramyOutputShape(&ws->gh,sh,st);
+    GradientHistogramOutputShape(&ws->gh,sh,st);
 
     *shape=(struct hog_feature_dims) {
         .x=sh[0],

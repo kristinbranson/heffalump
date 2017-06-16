@@ -140,6 +140,14 @@ static float* disk(float time) {
     return out;
 }
 
+static void transpose2d(float *out,const float* in,unsigned w,unsigned h) {
+    for(unsigned j=0;j<h;++j) {
+        for(unsigned i=0;i<w;++i) {
+            out[j+i*h]=in[i+j*w];
+        }
+    }
+}
+
 #include <float.h>
 static void autocontrast(const float *out,int n) {
     static float mn=FLT_MAX;
@@ -167,33 +175,46 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     };
 
     float* out=lk_alloc(&ctx,malloc);
+    float* out2=lk_alloc(&ctx,malloc);
     app_init(logger);
     imshow_contrast(imshow_f32,-10,10);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;    
 
-//    lk(&ctx[0],disk(app_uptime_s()/10.0));
-//    lk(&ctx[1],disk(app_uptime_s()/10.0));
-//    lk(&ctx[2],disk(app_uptime_s()/10.0));
+    lk(&ctx[0],disk(app_uptime_s()/10.0));
+    lk(&ctx[1],disk(app_uptime_s()/10.0));
+    lk(&ctx[2],disk(app_uptime_s()/10.0));
     while(app_is_running()) {
-        int i0=0;//((int)nframes)&0x3;
-        int i1=0;//((int)nframes+3)&0x3;
+        int i0=((int)nframes)&0x3;
+        int i1=((int)nframes+3)&0x3;
         float* input=disk(app_uptime_s()/10.0);
 //        float* input=disk(nframes/5000.0);
-#if 0
-        autocontrast(input,ctx[0].w*ctx[0].h);
-        imshow(imshow_f32,ctx[0].w,ctx[0].h,input);
-#else
         clock=tic();
         lk(&ctx[i1],input);
         lk_copy(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
         acc+=(float)toc(&clock);
 
-//        autocontrast(out,ctx[0].w*ctx[0].h);
-//        imshow(imshow_f32,ctx[0].w,ctx[0].h,out);
+#if 0
+        // Useful for debuging (when modifying upstream outputs)
+        // autocontrast(out,ctx[0].w*ctx[0].h);
+        // imshow(imshow_f32,ctx[0].w,ctx[0].h,out);
+#else
+        // maybe transpose to get nice ordering
+        // for display...sorry messy
+        struct lk_output_dims shape,strides;
+        lk_output_strides(&ctx[0],&strides);
+        lk_output_shape(&ctx[0],&shape);
+        if(strides.v!=1) {
+            // v is either the inner-most or outer-most dimension
+            // when strides.v!=1 we infer it's outermost.
+            // Flip to innermost with a transpose.
+            transpose2d(out2,out,shape.x*shape.y,shape.v);
+        } else {
+            out2=out;
+        }
 
-        autocontrast(out,ctx[0].w*ctx[0].h*2);
-        imshow(imshow_2f32,ctx[0].w,ctx[0].h,out);
+        autocontrast(out2,ctx[0].w*ctx[0].h*2);
+        imshow(imshow_2f32,ctx[0].w,ctx[0].h,out2);
 #endif
         Sleep(1);
         ++nframes;

@@ -1,4 +1,4 @@
-#include "../lk.h"
+#include "lk.h"
 #include <new>
 #include <stdexcept>
 #include <cuda_runtime.h>
@@ -60,8 +60,10 @@ namespace gpu {
 #undef PAYLOAD
     }
 
+
     __global__ void solve_k(
-        float2 * __restrict__ out,
+        float * __restrict__ out_dx,
+        float * __restrict__ out_dy,
         const float * __restrict__ Ixx,
         const float * __restrict__ Ixy,
         const float * __restrict__ Iyy,
@@ -99,11 +101,11 @@ namespace gpu {
         
         const float det=xx*yy-xy*xy;
         if(det>1e-5) {
-            out[i]=make_float2(
-                (xunits/det)*(xx*xt+xy*yt),
-                (yunits/det)*(xy*xt+yy*yt));
+            out_dx[i]=(xunits/det)*(xx*xt+xy*yt);
+            out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
         } else {
-            out[i]=make_float2(0.0f,0.0f);
+            out_dx[i]=0.0f;
+            out_dy[i]=0.0f;
         }
     }
 
@@ -319,7 +321,9 @@ namespace gpu {
                 int n=w*h;
                 dim3 block(32*4);
                 dim3 grid(CEIL(n,block.x));
-                solve_k<<<grid,block,0,streams[4]>>>(out,
+                float *out_dx=out;
+                float *out_dy=out+n;
+                solve_k<<<grid,block,0,streams[4]>>>(out_dx,out_dy,
                     stage3.xx.out,
                     stage3.xy.out,
                     stage3.yy.out,
@@ -349,6 +353,10 @@ namespace gpu {
 //            CUTRY(logger,cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
 //            CUTRY(logger,cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
             CUTRY(logger,cudaStreamSynchronize(streams[4]));
+        }
+
+        cudaStream_t output_stream() const {
+            return streams[4];
         }
 
     private:
@@ -393,7 +401,7 @@ namespace gpu {
             unsigned nsmooth,nder;
         } kernels;
     public:
-        float2 *out;
+        float *out;
     };
 
 }}} // end priv::lk::gpu
@@ -443,4 +451,19 @@ void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)) {
 void  lk_copy(const struct lk_context *self, float *out, size_t nbytes) {
     struct workspace* ws=(struct workspace*)self->workspace;
     ws->copy_last_result(out,nbytes);
+}
+
+void lk_output_strides(const struct lk_context *self,struct lk_output_dims* strides) {
+    struct lk_output_dims s={1,self->w,self->w*self->h};
+    *strides=s;
+}
+
+void lk_output_shape(const struct lk_context *self,struct lk_output_dims* shape) {
+    struct lk_output_dims s={self->w,self->h,2};
+    *shape=s;
+}
+
+cudaStream_t lk_output_stream(const struct lk_context *self) {
+    struct workspace* ws=(struct workspace*)self->workspace;
+    return ws->output_stream();
 }

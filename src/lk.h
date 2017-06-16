@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #include <stdlib.h> // size_t
+#include <stdint.h> // uint64_t
 
 enum lk_scalar_type {
     lk_u8,
@@ -20,6 +21,10 @@ enum lk_scalar_type {
     lk_i64,
     lk_f32,
     lk_f64,
+};
+
+struct lk_output_dims {
+    uint64_t x,y,v;    
 };
 
 struct lk_parameters {
@@ -83,6 +88,19 @@ void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes));
 /** Copy the result buffer to out.
 */
 void  lk_copy(const struct lk_context *self, float *out, size_t nbytes);
+
+/**
+ * `strides` describes the memory layout of the 3d array of computed velocities.
+ * The 3d array sits in a contiguous range of memory as an array of float values.
+ *
+ * The index of the value at r=(x,y,velocity_component) is given by dot(r,strides).
+ */
+void lk_output_strides(const struct lk_context *self,struct lk_output_dims* strides);
+
+/**
+ * `shape` describes the dimensions of the 3d array of computed velocities.
+ */
+void lk_output_shape(const struct lk_context *self,struct lk_output_dims* shape);
 
 #ifdef __cplusplus
 }

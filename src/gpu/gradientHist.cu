@@ -146,7 +146,7 @@ namespace priv {
                     __syncthreads();
                     // Output the bin
                     if(threadIdx.x==0&&threadIdx.y==0)
-                        o[i*bin_stride]=s*cellnorm(rx,ry,r0x+support_x,r0y+support_y,w,h,ncx,ncy);
+                        o[i*bin_stride]=1.0f; //s*cellnorm(rx,ry,r0x+support_x,r0y+support_y,w,h,ncx,ncy);
                 }
             //}
 #endif
@@ -155,7 +155,8 @@ namespace priv {
         struct workspace {
             workspace(const struct gradientHistogramParameters* params,priv::gradient_histogram::logger_t logger)
                 : logger(logger)
-                ,params(*params) // grab a copy
+                , params(*params) // grab a copy
+                , stream(nullptr)
             {
                 CUTRY(logger,cudaMalloc(&out,result_nbytes()));
                 CUTRY(logger,cudaMalloc(&dx,input_nbytes()));
@@ -174,6 +175,7 @@ namespace priv {
 
             int2  image_size() const { return make_int2(params.image.w,params.image.h); }
             int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
+            void with_stream(cudaStream_t s) {stream=s;}
 
             void compute(const float *dx,const float *dy) {
                 // Each block will be responsible for computing the histogram for
@@ -192,10 +194,10 @@ namespace priv {
                     dim3 grid(
                         CEIL(params.image.w,block.x),
                         CEIL(params.image.h,block.y));
-                    priv::gradient_histogram::oriented_magnitudes_k<<<grid,block>>>(mag,theta,dx,dy,
+                    priv::gradient_histogram::oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
                                                                     params.image.w,params.image.h,
                                                                     params.image.pitch,params.nbins);
-                    CUTRY(logger,cudaGetLastError());
+//                    CUTRY(logger,cudaGetLastError());
                 }
                 {
                     dim3 block(32,CEIL(cell_nelem,32));
@@ -205,17 +207,17 @@ namespace priv {
                     CHECK(logger,block.y<=32);      // FIXME: adapt for cells larger than 16x16
                     CHECK(logger,params.nbins<=16);
                     if(params.nbins<=8) {
-                        priv::gradient_histogram::gradhist_k<8,32><<<grid,block>>>(out,mag,theta,
+                        priv::gradient_histogram::gradhist_k<8,32><<<grid,block,0,stream>>>(out,mag,theta,
                                                                                     params.image.w,params.image.h,
                                                                                     params.nbins,cell_size());
                     } else if(params.nbins<=16) {
-                        priv::gradient_histogram::gradhist_k<16,32><<<grid,block>>>(out,mag,theta,
+                        priv::gradient_histogram::gradhist_k<16,32><<<grid,block,0,stream>>>(out,mag,theta,
                                                                                     params.image.w,params.image.h,
                                                                                     params.nbins,cell_size());
                     } else {
                         throw std::runtime_error("Unsupported number of histogram bins.");
                     }
-                    CUTRY(logger,cudaGetLastError());
+//                    CUTRY(logger,cudaGetLastError());
                 }
 #undef CEIL
             }
@@ -227,9 +229,10 @@ namespace priv {
             void copy_last_result(void *buf,size_t nbytes) const {
                 //CHECK(logger,result_nbytes<nbytes);
 
-                CUTRY(logger,cudaMemcpy(buf,out,result_nbytes(),cudaMemcpyDeviceToHost));
+                CUTRY(logger,cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
 //                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
 //                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+                CUTRY(logger,cudaStreamSynchronize(stream));
             }
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const {
@@ -266,7 +269,7 @@ namespace priv {
 
             priv::gradient_histogram::logger_t logger;
             struct gradientHistogramParameters params;
-
+            cudaStream_t stream;
             // device pointers
             float *out,*dx,*dy,*mag,*theta;
         };
@@ -313,6 +316,11 @@ extern "C" {
         WORKSPACE->compute(dx,dy);
     }
 
+    /// Assign a stream for the computation.
+    void GradientHistogramWithStream(struct gradientHistogram *self, cudaStream_t stream) {
+        WORKSPACE->with_stream(stream);
+    }
+
     //
     // Utility functions for grabbing the output and inspecting
     // it's shape/format.
@@ -337,7 +345,7 @@ extern "C" {
     /// Or, more precisely, the index of an item at r=(x,y,z) is dot(r,strides).
     ///
     /// The last size is the total number of elements in the volume.
-    void GradientHistogramyOutputShape(const struct gradientHistogram *self,unsigned shape[3], unsigned strides[4]) {
+    void GradientHistogramOutputShape(const struct gradientHistogram *self,unsigned shape[3], unsigned strides[4]) {
         WORKSPACE->output_shape(shape,strides);
     }
 #undef WORKSPACE

@@ -8,7 +8,7 @@
 #include <windows.h> // OutputDebugStringA
 #include <float.h>
 
-#define NREPS (1000)
+#define NREPS (5000)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -121,7 +121,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
             .smoothing=4.0   // This is the object scale
     }};
 
-    cudaSetDevice(0);
+//    cudaSetDevice(1);
 
     struct lk_context ctx[4]={
         lk_init(logger,lk_u8,256,256,256,params),

@@ -5,6 +5,7 @@
 #ifdef __cplusplus
 extern "C"{
 #endif
+    #include <cuda_runtime.h> // cudaStream_t
 
     struct gradientHistogramParameters {
         struct { unsigned w,h; } cell;
@@ -34,6 +35,9 @@ extern "C"{
     /// is x+y*p.  w,h and p should be specified in units of pixels.
     void GradientHistogram(struct gradientHistogram *self,const float *dx,const float *dy);
       
+    /// Assign a stream for the computation.
+    void GradientHistogramWithStream(struct gradientHistogram *self, cudaStream_t stream);
+
     /// Allocate a buffer capable of receiving the result.
     /// This buffer can be passed to `GradientHistogramCopyLastResult`.
     void* GradientHistogramAllocOutput(const struct gradientHistogram *self,void* (*alloc)(size_t nbytes));
