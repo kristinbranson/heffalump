@@ -30,11 +30,6 @@ struct hog_image {
     int pitch;
 };
 
-struct hog_features {
-    int ncells, nbins;
-    float bins[];
-};
-
 struct hog_parameters {
     struct {
         int w,h;

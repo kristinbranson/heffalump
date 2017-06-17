@@ -23,11 +23,6 @@ enum hof_scalar_type {
     hof_f64,
 };
 
-struct hof_features {
-    int ncells, nbins;
-    float bins[];
-};
-
 struct hof_parameters {
     struct lk_parameters lk;
     struct { int w,h; } cell;

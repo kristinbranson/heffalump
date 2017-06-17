@@ -2,10 +2,11 @@
 #ifndef H_NGC_GRADIENT_HISTOGRAM
 #define H_NGC_GRADIENT_HISTOGRAM
 
+#include <cuda_runtime.h> // cudaStream_t
+
 #ifdef __cplusplus
 extern "C"{
-#endif
-    #include <cuda_runtime.h> // cudaStream_t
+#endif    
 
     struct gradientHistogramParameters {
         struct { unsigned w,h; } cell;

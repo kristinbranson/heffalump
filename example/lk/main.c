@@ -177,8 +177,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         lk_init(logger,lk_u8,256,256,256,params)
     };
 
-    float* out=lk_alloc(&ctx,malloc);
-    float* out2=lk_alloc(&ctx,malloc);
+    float* out=lk_alloc(&ctx[0],malloc);
+    float* out2=lk_alloc(&ctx[0],malloc);
     app_init(logger);
     imshow_contrast(imshow_f32,-10,10);
     TicTocTimer clock;
