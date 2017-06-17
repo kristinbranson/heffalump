@@ -163,11 +163,13 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hof_parameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.type=hof_u8,.w=256,.h=256,.pitch=256}, // need this to reserve memory for 1 time point
-        .cell={16,16},.nbins=8};
+        .cell={8,8},.nbins=16};
     struct hof_context ctx=hof_init(logger,params);
-    float* out=hof_features_alloc(&ctx,malloc);
+    int nbytes=2*256*256*sizeof(float);
+    float* out=(float*) malloc(nbytes); //hof_features_alloc(&ctx,malloc);
+    
 
-    hogshow_set_attr(1,params.cell.w,params.cell.h);
+    hogshow_set_attr(5,params.cell.w,params.cell.h);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
@@ -179,17 +181,18 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 
         clock=tic();
         hof(&ctx,input);
+        hof_features_copy(&ctx,out,nbytes);
         acc+=(float)toc(&clock);
-        
-        hof_features_copy(&ctx,out,256*256*8*sizeof(float));
+                
         struct hog_feature_dims shape,strides;
         hof_features_shape(&ctx,&shape);
         hof_features_strides(&ctx,&strides);
 
 #if 0
-        imshow_contrast(imshow_u8,0,255);
-        imshow(imshow_u8,256,256,input);
-#elif 1
+        imshow_contrast(imshow_f32,-10,10);
+        //autocontrast(out,256*256);
+        imshow(imshow_f32,256,256,out);
+#elif 0
         autocontrast(out,16*16*8);
         imshow(imshow_f32,16,16*8,out);
 #else
@@ -197,6 +200,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         imshow(imshow_u8,256,256,input);
 #endif
 
+        Sleep(10);
         ++nframes;
     }
     hof_teardown(&ctx);

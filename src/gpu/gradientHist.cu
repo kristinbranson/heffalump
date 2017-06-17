@@ -146,7 +146,7 @@ namespace priv {
                     __syncthreads();
                     // Output the bin
                     if(threadIdx.x==0&&threadIdx.y==0)
-                        o[i*bin_stride]=1.0f; //s*cellnorm(rx,ry,r0x+support_x,r0y+support_y,w,h,ncx,ncy);
+                        o[i*bin_stride]=s*cellnorm(rx,ry,r0x+support_x,r0y+support_y,w,h,ncx,ncy);
                 }
             //}
 #endif
@@ -177,7 +177,7 @@ namespace priv {
             int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
             void with_stream(cudaStream_t s) {stream=s;}
 
-            void compute(const float *dx,const float *dy) {
+            void compute(const float *dx,const float *dy) const {
                 // Each block will be responsible for computing the histogram for
                 // one cell.
                 // Block input:  a 2*cell.w x 2*cell.h region about the cell center.
@@ -197,7 +197,7 @@ namespace priv {
                     priv::gradient_histogram::oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
                                                                     params.image.w,params.image.h,
                                                                     params.image.pitch,params.nbins);
-//                    CUTRY(logger,cudaGetLastError());
+                    CUTRY(logger,cudaGetLastError());
                 }
                 {
                     dim3 block(32,CEIL(cell_nelem,32));
@@ -217,7 +217,7 @@ namespace priv {
                     } else {
                         throw std::runtime_error("Unsupported number of histogram bins.");
                     }
-//                    CUTRY(logger,cudaGetLastError());
+                    CUTRY(logger,cudaGetLastError());
                 }
 #undef CEIL
             }

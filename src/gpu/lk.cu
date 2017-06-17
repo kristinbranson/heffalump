@@ -19,6 +19,18 @@ namespace gpu {
 
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
 
+    // alias types - helps with case statements later
+    using u8 =uint8_t;
+    using u16=uint16_t;
+    using u32=uint32_t;
+    using u64=uint64_t;
+    using i8 = int8_t;
+    using i16= int16_t;
+    using i32= int32_t;
+    using i64= int64_t;
+    using f32=float;
+    using f64=double;
+
     unsigned bytes_per_pixel(enum conv_scalar_type type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
         return bpp[type];
@@ -30,7 +42,7 @@ namespace gpu {
         const int y=threadIdx.y+blockIdx.y*blockDim.y;
         if(x<w && y<h) {
             const int i=x+y*p;
-            out[x+y*w]=a[i]-b[i];
+            out[x+y*w]=float(a[i])-float(b[i]);
         }
     }
     
@@ -252,7 +264,15 @@ namespace gpu {
 
                 dim3 block(32,4);
                 dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
-                diff_k<<<grid,block,0,streams[2]>>>(stage1.dt,input,last,w,h,pitch);
+                switch(type) {
+                #define CASE(T) case lk_##T: diff_k<T><<<grid,block,0,streams[2]>>>(stage1.dt,(T*)input,(T*)last,w,h,pitch); break;
+                    CASE(u8);  CASE(i8);
+                    CASE(u16); CASE(i16);
+                    CASE(u32); CASE(i32); CASE(f32);
+                    CASE(u64); CASE(i64); CASE(f64);
+                    default:;
+                #undef CASE
+                }                
 
                 // copy kernel uses vectorized load/stores
 #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
@@ -261,7 +281,16 @@ namespace gpu {
                 const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
                 CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
 #undef aligned_to
-                cpy_k<<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>(last,input,pitch*h);
+                switch(type) {
+                #define CASE(T) case lk_##T: cpy_k<T><<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>((T*)last,(T*)input,pitch*h); break;
+                    CASE(u8);  CASE(i8);
+                    CASE(u16); CASE(i16);
+                    CASE(u32); CASE(i32); CASE(f32);
+                    CASE(u64); CASE(i64); CASE(f64);
+                    default:;
+                #undef CASE
+                }
+                
             }
             conv_no_copy(&stage1.dx,type,input);
             conv_no_copy(&stage1.dy,type,input);          
@@ -377,7 +406,7 @@ namespace gpu {
         enum conv_scalar_type type;
         unsigned w,h,pitch;
         logger_t logger;
-        float *last,*input;
+        void *last,*input;
         struct  {
             struct conv_context dx,dy;        
             float *dt;       
@@ -423,7 +452,7 @@ extern "C" struct lk_context lk_init(
         self.logger=logger;
         self.w=w;
         self.h=h;
-        self.result=reinterpret_cast<float*>(ws->out);
+        self.result=ws->out;
         self.workspace=ws;
     } catch(const std::runtime_error& e) {
         ERR(logger,"Problem initializing Lucas-Kanade context:\n\t%s",e.what());

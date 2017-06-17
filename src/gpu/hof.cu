@@ -76,10 +76,10 @@ namespace gpu {
             lk(&lk_,input);            
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
-            GradientHistogram(&gh,dx,dy);
+             GradientHistogram(&gh,dx,dy);
         }
 
-    private: 
+//    private: 
         logger_t logger;
         struct gradientHistogram gh;
         struct lk_context lk_;
@@ -129,6 +129,7 @@ void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nb
 void hof_features_copy(const struct hof_context *self, void *buf, size_t nbytes) {
     auto ws=static_cast<struct workspace*>(self->workspace);    
     ws->copy_last_result(buf,nbytes);
+//    lk_copy(&ws->lk_,(float*)buf,nbytes);
 }
 
 void hof_features_strides(const struct hof_context *self,struct hog_feature_dims *strides) {

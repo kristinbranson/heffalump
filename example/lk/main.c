@@ -133,11 +133,14 @@ static float* disk(float time) {
         }
     }
 
-
+#if 0
     conv(&ctx,conv_u8,buf);
     conv_copy(&ctx,out);
-
-    return out;
+    return out; // output f32
+#else
+    return buf; // output u8
+#endif
+    
 }
 
 static void transpose2d(float *out,const float* in,unsigned w,unsigned h) {
@@ -168,10 +171,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
             .smoothing=4.0   // This is the object scale
     }};
     struct lk_context ctx[4]={
-        lk_init(logger,lk_f32,256,256,256,params),
-        lk_init(logger,lk_f32,256,256,256,params),
-        lk_init(logger,lk_f32,256,256,256,params),
-        lk_init(logger,lk_f32,256,256,256,params)
+        lk_init(logger,lk_u8,256,256,256,params),
+        lk_init(logger,lk_u8,256,256,256,params),
+        lk_init(logger,lk_u8,256,256,256,params),
+        lk_init(logger,lk_u8,256,256,256,params)
     };
 
     float* out=lk_alloc(&ctx,malloc);
@@ -196,8 +199,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 
 #if 0
         // Useful for debuging (when modifying upstream outputs)
-        // autocontrast(out,ctx[0].w*ctx[0].h);
-        // imshow(imshow_f32,ctx[0].w,ctx[0].h,out);
+         autocontrast(out,ctx[0].w*ctx[0].h);
+         imshow(imshow_f32,ctx[0].w,ctx[0].h,out);
 #else
         // maybe transpose to get nice ordering
         // for display...sorry messy
