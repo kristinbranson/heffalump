@@ -4,6 +4,7 @@ add_subdirectory(hogshow)
 
 add_subdirectory(max_gpu)
 add_subdirectory(stream)
+add_subdirectory(scan)
 
 set_target_properties(sfmt   PROPERTIES FOLDER examples/libs)
 set_target_properties(imshow PROPERTIES FOLDER examples/libs)
