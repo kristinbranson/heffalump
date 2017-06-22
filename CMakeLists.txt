@@ -20,3 +20,6 @@ add_subdirectory(bench)
 if(WIN32)
     add_subdirectory(example)    
 endif()
+
+include(InstallRequiredSystemLibraries)
+include(CPack) # enable packaging
