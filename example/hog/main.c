@@ -60,7 +60,7 @@ static void* disk(double time) {
     static unsigned nks[]={3,3};
     if(!out) {
         ctx=conv_init(logger,W,H,W,ks,nks);
-        out=conv_alloc(&ctx,malloc);
+        out=malloc(conv_output_nbytes(&ctx));
     }
 
     // additive noise
@@ -169,7 +169,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,W,H);
-    float* out=hog_features_alloc(&ctx,malloc);
+    float* out=malloc(hog_features_nbytes(&ctx));
 
     hogshow_set_attr(params.cell.w*0.1,params.cell.w,params.cell.h);
 
@@ -190,7 +190,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         hog(&ctx,him);
         acc+=(float)toc(&clock);
         
-        hog_features_copy(&ctx,out);
+        hog_features_copy(&ctx,out,hog_features_nbytes(&ctx));
         struct hog_feature_dims shape,strides;
         hog_features_shape(&ctx,&shape);
         hog_features_strides(&ctx,&strides);

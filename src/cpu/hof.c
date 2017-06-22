@@ -132,8 +132,9 @@ void hof(struct hof_context *self,const void* input) {
 Error:;
 }
 
-void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nbytes)) {
-    return alloc(features_nbytes(self));
+
+size_t hof_features_nbytes(const struct hof_context *self) {
+    return features_nbytes(self);
 }
 
 void hof_features_copy(const struct hof_context *self, void *buf,size_t nbytes) {

@@ -69,7 +69,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     };
     
     struct conv_context ctx=conv_init(logger,W,H,W,ks,nks);
-    float* out=conv_alloc(&ctx,malloc);
+    float* out=malloc(conv_output_nbytes(&ctx));
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     float kern_acc_ms=0.0f;

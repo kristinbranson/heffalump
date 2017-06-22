@@ -79,11 +79,10 @@ void lk_teardown(struct lk_context *self);
 */
 void lk(struct lk_context *self,const void *im);
 
-/** Allocates a results buffer using the supplied `alloc` function.
-    The returned buffer will have enough capacity for it to be used with 
-    the lk_copy() function.
-*/
-void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes));
+/** @Returns the number of bytes required for the output buffer 
+ *  @see lk_copy()
+ */
+size_t lk_output_nbytes(const struct lk_context *self);
 
 /** Copy the result buffer to out.
 */

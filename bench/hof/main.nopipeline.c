@@ -107,9 +107,6 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         .cell={16,16},.nbins=8};
     struct hof_context ctx[]={
         hof_init(logger,params),
-        hof_init(logger,params),
-        hof_init(logger,params),
-        hof_init(logger,params),
     };
     float* out=malloc(hof_features_nbytes(&ctx[0]));
     
@@ -117,17 +114,12 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
     float mindt=FLT_MAX,maxdt=0.0f;
 
-    hof(&ctx[0],disk(0.0f));
-    hof(&ctx[0],disk(0.1f));
-    hof(&ctx[0],disk(0.2f));
     while(nframes<NREPS) {
-        int i0=((int)nframes)&0x3;
-        int i1=((int)nframes+3)&0x3;
         void* input=disk(nframes*0.1f);
 
         clock=tic();
-        hof(&ctx[i1],input);
-        hof_features_copy(&ctx[i0],out,16*16*8*sizeof(float));
+        hof(&ctx[0],input);
+        hof_features_copy(&ctx[0],out,16*16*8*sizeof(float));
         {
             float dt=(float)toc(&clock);
             mindt=fminf(dt,mindt);
@@ -137,8 +129,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         }
         ++nframes;
     }
-    for(int i=0;i<4;++i)
-        hof_teardown(&ctx[i]);
+    
+    hof_teardown(&ctx[0]);
     LOG("nframes: %f\n",nframes);
     LOG("Mean HoF time: %f +/- %f us [%f,%f]\n",
         1e6*acc/(float)nframes,
@@ -159,8 +151,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
  *   nframes: 5000.000000
  *   Mean HoF time: 13323.631287 +/- 1308.247520 us [11946.764648,46175.140625]
  *   Mean HoF throughput: 4.918779 Mpx/s
- *
- * (sigmas: der 1px smooth 3px, 256x256 u8 inputs, HAL9001)
+ * 
+ * (sigmas: der 1px smooth 3px, 256x256 u8 inputs, HAL9001)  
  * - gpu (Quadro P5000) Release (f34e44e)
  *   Pipeline (x4)
  *      nframes: 5000.000000

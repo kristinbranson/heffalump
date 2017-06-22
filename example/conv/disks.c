@@ -173,7 +173,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     };
     
     struct conv_context ctx=conv_init(logger,W,H,W,ks,nks);
-    float* out=conv_alloc(&ctx,malloc);
+    size_t nbytes=conv_output_nbytes(&ctx);
+    float* out=malloc(nbytes);
     app_init(logger);
     imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
     TicTocTimer clock;
@@ -189,7 +190,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         acc+=(float)toc(&clock);
         ++nframes;
 
-        conv_copy(&ctx,out);
+        conv_copy(&ctx,out,nbytes);
         autocontrast(out,ctx.w*ctx.h);
         imshow(imshow_f32,ctx.w,ctx.h,out);
 #endif

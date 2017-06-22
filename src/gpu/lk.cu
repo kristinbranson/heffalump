@@ -472,9 +472,10 @@ void lk(struct lk_context *self,const void *im) {
     ws->compute(im);
 }
 
-void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)) {    
+
+size_t lk_output_nbytes(const struct lk_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    return alloc(ws->bytesof_output());
+    return ws->bytesof_output();
 }
 
 void  lk_copy(const struct lk_context *self, float *out, size_t nbytes) {

@@ -120,10 +120,12 @@ void hof(struct hof_context *self,const void* input) {
 }
 
 
-void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nbytes)) {
+size_t hof_features_nbytes(const struct hof_context *self) {
     auto ws=static_cast<struct workspace*>(self->workspace);
-    return alloc(ws->output_nbytes());
+    return ws->output_nbytes();
 }
+
+
 
 void hof_features_copy(const struct hof_context *self, void *buf, size_t nbytes) {
     auto ws=static_cast<struct workspace*>(self->workspace);    

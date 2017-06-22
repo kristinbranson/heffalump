@@ -61,7 +61,7 @@ static float* disk(float time) {
     static unsigned nks[]={1,1};
     if(!out) {
         ctx=conv_init(logger,256,256,256,ks,nks);        
-        out=conv_alloc(&ctx,malloc);
+        out=malloc(conv_output_nbytes(&ctx));
     }
 
 
@@ -177,8 +177,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         lk_init(logger,lk_u8,256,256,256,params)
     };
 
-    float* out=lk_alloc(&ctx[0],malloc);
-    float* out2=lk_alloc(&ctx[0],malloc);
+    float* out=malloc(lk_output_nbytes(&ctx[0]));
+    float* out2=malloc(lk_output_nbytes(&ctx[0]));
     app_init(logger);
     imshow_contrast(imshow_f32,-10,10);
     TicTocTimer clock;

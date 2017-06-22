@@ -131,7 +131,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     };
 
 
-    float* out=lk_alloc(&ctx[0],malloc);
+    float* out=malloc(lk_output_nbytes(&ctx[0]));
     TicTocTimer clock;
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
     float mindt=FLT_MAX,maxdt=0.0f;

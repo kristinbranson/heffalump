@@ -7,7 +7,7 @@
 //#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 //#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 using namespace std;
 
@@ -264,13 +264,15 @@ void conv(struct conv_context *self,enum conv_scalar_type type, const void *im) 
         #undef CASE
     }
 }
-
-void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes)) {
-    return alloc(self->pitch*self->h*sizeof(float));
+ 
+size_t conv_output_nbytes(const struct conv_context *self) {
+    return self->pitch*self->h*sizeof(float);
 }
 
-void  conv_copy(const struct conv_context *self, float *out) {
+void  conv_copy(const struct conv_context *self, float *out, size_t nbytes) {    
+    CHECK(self->logger,conv_output_nbytes(self)<=nbytes);
     memcpy(out,self->out,self->pitch*self->h*sizeof(float));
+    Error:;
 }
 
 /*

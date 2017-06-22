@@ -209,7 +209,7 @@ void lk(struct lk_context *self, const void *im){
         for(;out<end;++out,++a,++b)
             *out=*a**b;
         conv(&ws->smooth,conv_f32,jobs[i].out);
-        conv_copy(&ws->smooth,jobs[i].out); // FIXME: avoid this copy
+        conv_copy(&ws->smooth,jobs[i].out,conv_output_nbytes(&ws->smooth)); // TODO: avoid this copy
     }
     
     // Solve the 2x2 linear system for the flow
@@ -250,8 +250,8 @@ void lk(struct lk_context *self, const void *im){
     memcpy(ws->last,im,bytes_per_pixel(ws->type)*ws->pitch*self->h);
 }
 
-void* lk_alloc(const struct lk_context *self, void* (*alloc)(size_t nbytes)){
-    return alloc(sizeof(float)*self->w*self->h*2);
+size_t lk_output_nbytes(const struct lk_context *self) {
+    return sizeof(float)*self->w*self->h*2;
 }
 
 void lk_copy(const struct lk_context *self, float *out, size_t nbytes){

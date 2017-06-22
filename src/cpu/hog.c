@@ -110,14 +110,15 @@ void hog(struct hog_context *self,const struct hog_image image) {
 Error:;
 }
 
-
-void* hog_features_alloc(const struct hog_context *self,void* (*alloc)(size_t nbytes)) {
-    return alloc(features_nbytes(self));
+size_t hog_features_nbytes(const struct hog_context *self) {
+    return features_nbytes(self);
 }
 
-void hog_features_copy(const struct hog_context *self, void *buf) {
+void hog_features_copy(const struct hog_context *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
+    CHECK(nbytes<=features_nbytes(self));
     memcpy(buf,ws->features,features_nbytes(self));
+Error:;
 }
 
 

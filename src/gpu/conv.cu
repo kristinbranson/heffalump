@@ -412,12 +412,13 @@ void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){
     }
 }
 
-void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes)){ 
-    return alloc(priv::sizeof_output(self));
+size_t conv_output_nbytes(const struct conv_context *self) {
+    return priv::sizeof_output(self);
 }
 
-void  conv_copy(const struct conv_context *self, float *out){ 
+void  conv_copy(const struct conv_context *self, float *out,size_t nbytes){ 
     try {
+        CHECK(priv::sizeof_output(self)<=nbytes);
         auto ws=static_cast<priv::workspace*>(self->workspace);
         CUTRY(cudaMemcpyAsync(out,ws->out,priv::sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));

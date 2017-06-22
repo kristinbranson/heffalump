@@ -46,7 +46,10 @@ void hof(
     struct hof_context     *context,
     const void *input);
 
-void* hof_features_alloc(const struct hof_context *context,void* (*alloc)(size_t nbytes));
+/** @Returns the number of bytes required for the output buffer
+ *  @see hog_features_copy()
+ */
+size_t hof_features_nbytes(const struct hof_context *context);
 void  hof_features_copy(const struct hof_context *context, void *buf,size_t nbytes);
 
 

@@ -58,7 +58,7 @@ namespace priv {
             }
         }
 
-        /// @returns a normalization correction factor that reweights cells 
+        /// @returns a normalization correction factor that re-weights cells 
         /// at the edge of the patch.  This corrects for the fact that 
         /// these edge cells don't get contributions from the boundary.
         ///
@@ -67,28 +67,32 @@ namespace priv {
         /// @param w  The number of cells along the x dimension
         /// @param h  The number of cells along the y dimension
         ///
-        /// One way of picturing what the normalization factor is to first 
-        /// think about how the interpolation function.  In one dimension this
-        /// is just a linear interpolation that starts with a weight, 1.0f, 
-        /// that decreases as from the center of the cell down to zero: 
-        /// `max(0.0f,1.0f-dx)` where `dx` is the distance from center.
+        /// The normalization factor depends on the interpolation function.
+        /// In one dimension this is just a linear interpolation that starts
+        /// with a weight, 1.0f, that decreases from the center of the cell
+        /// down to zero: 
+        /// 
+        ///     `max(0.0f,1.0f-dx)` 
+        ///
+        /// where `dx` is the distance from center.
         ///
         /// That weighting function forms a triangle centered over the cell. 
-        /// The total support (non-zero area) for the weighting is something 
-        /// like `2*cell size`. If we treat the cell size as a unit (1.0) 
-        /// then the support is 2.0.
+        /// The total support (non-zero area) for the weighting is  
+        /// `2*cell size`. If we treat the cell size as a unit (1.0) then the
+        /// support is length 2.
         ///
         /// For cells at the boundary, only 3/4 of that support is in-bounds.
-        /// To correction we integrate the weight function over the support and
-        /// divide by the same integral but restricted to the in-bounds portion.
+        /// To correct, the weight function is integrated over the support and
+        /// divide by the same integral restricted to the in-bounds area.
         ///
-        /// The out of bounds area is a triangle. The area under the triangle
-        /// is `1/2 base*height` or `1/2 * 1/2 * 1/2`. So the inbounds area is
-        /// `1-1/8 = 7/8`.
+        /// A graph of the out-of-bounds interpolation function forms a 
+        /// triangle. The area under the triangle is `1/2 base*height` or
+        /// `1/2 * 1/2 * 1/2`. So the inbounds area is `1-1/8 = 7/8`.
         ///
-        __device__ float cellnorm(int x,int y,int w, int h) {
+        __device__ float cellnorm(int x,int y,int w, int h, int cw,int ch) {
             return ((x==0||x==(w-1))?(8.0f/7.0f):1.0f)*
-                   ((y==0||y==(h-1))?(8.0f/7.0f):1.0f);
+                   ((y==0||y==(h-1))?(8.0f/7.0f):1.0f)/
+                   float(cw*ch);
         }
 
         template<int MAX_NBINS>
@@ -99,12 +103,9 @@ namespace priv {
             int w,int h,int nbins,
             int cellw, int cellh) 
         {            
-            // block origin
-            const int r0x=blockIdx.x*blockDim.x;
-            const int r0y=blockIdx.y*blockDim.y;
             // current input sample position
-            const int rx=threadIdx.x+r0x;
-            const int ry=threadIdx.y+r0y;
+            const int rx=threadIdx.x+blockIdx.x*blockDim.x;;
+            const int ry=threadIdx.y+blockIdx.y*blockDim.y;
 
             if(in_bounds(rx,ry,w,h)) {
                 // compute weights for 4 influenced cells (tl,tr,bl,br)
@@ -118,19 +119,19 @@ namespace priv {
                 const float dy=(ry-cellj*cellh+0.5f)/float(cellh)-0.5f;
                 
                 const int ncellh=CEIL(h,cellh);
-                const int ncellw=CEIL(w,cellw);
-                const float norm=1.0f/float(cellw*cellh);
+                const int ncellw=CEIL(w,cellw);                
                 const int binpitch=ncellw*ncellh;
                 const int neighborx=dx<0.0f?-1:1;
                 const int stepy=dy<0.0f?-1:1;
                 const int neighbory=stepy*ncellw;
                 const int cellidx=celli+cellj*ncellw;
 #if 0
+                // Useful for checking normalization
                 const int th=0.0f;
                 const float m=1.0f;
 #else
                 const int th=theta_bins[rx+ry*w];
-                const float m=norm*mag[rx+ry*w];
+                const float m=mag[rx+ry*w];
 #endif
                 
                 float *b=out+binpitch*th+cellidx;
@@ -140,15 +141,22 @@ namespace priv {
                 const float mx=fabsf(dx);
                 const float my=fabsf(dy);
                 const float
-                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh),
-                    c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh),
-                    c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh);
+                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
+                    c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
+                    c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
 
+#if 0                
+                // For benchmarking to check the cost of using the atomics.
+                // write  something out just to force the optimizer not to 
+                // remove the calculation
+                *b=c00+c01+c10+c11;
+#else
                 atomicAdd(b,c00);
                 if(inx&iny) atomicAdd(b+neighborx+neighbory,c11);
                 if(iny) atomicAdd(b+neighbory,c01);
                 if(inx) atomicAdd(b+neighborx,c10);
+#endif
                 
             }
         }
@@ -283,8 +291,8 @@ namespace priv {
 extern "C" {
 
 
-    /// @param logger [in] Must have lifetime longer than this object.  It can be called during `GradientHistogramDestroy()`.
-    ///                    The logger is used to report errors and debugging information back to the caller.
+    /// @param logger Must have lifetime longer than this object.  It can be called during `GradientHistogramDestroy()`.
+    ///               The logger is used to report errors and debugging information back to the caller.
     void GradientHistogramInit(struct gradientHistogram* self, 
                                const struct gradientHistogramParameters *param,
                                void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {        
@@ -356,36 +364,11 @@ extern "C" {
 }
 
 
-
-
-/* NOTES
-
-1. Normally I like to leave the allocator to be determined at runtime to facilitate interop with other 
-   languages/environments.  This also means I don't have to handle allocation failures since I can
-   require that of the caller.
-
-   Could have caller pass in the allocator on init, but with cuda involved there's not much of a reason
-   to do that.
-
-2. The algorithm involves resampling points to form the grid of cells.  It's possible to transform 
-   the cell grid wrt the pixels in a fairly arbitrary way without changing the algorithm much.
-
-3. Regarding labelling of dimensionts as "x" or "y":
-
-    I define "x" as the dimension with unit stride in memory.  Passing in a Matlab array, the "x"
-    dimension would point along the columns.
-
-    The labels are just, like, labels man.  You can call the dimensions what ever you want as
-    long as the corresponding strides/pitch is correct.
-
-    However, this does mean that angles might be rotated by 90 degrees from what you expected.  
-    ...Not sure how to handle.  Could add an option to rotate, but I think it's simple enough
-       to rotate in post (it's just a circular permutation of the bins)?
-*/
-
 /* TODO
 
 [ ] make use2pi optional
-[ ] streaming
+[ ] optimize: remove use of atomics
+    Over a block can reduce over threads accessing the same cells for the range of cells touched by the block.
+    The store those results and do a reduction over blocks to sum the final thing.
 
 */

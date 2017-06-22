@@ -59,21 +59,24 @@ void hog(
     struct hog_context     *context,
     const struct hog_image  image);
 
-void* hog_features_alloc(const struct hog_context *context,void* (*alloc)(size_t nbytes));
-void  hog_features_copy(const struct hog_context *context, void *buf);
+/** @Returns the number of bytes required for the output buffer
+ *  @see hog_features_copy()
+ */
+size_t hog_features_nbytes(const struct hog_context *context);
+void  hog_features_copy(const struct hog_context *context, void *buf,size_t nbytes);
 
 
 /**
-* `strides` describes the memory layout of the 3d array of computed features.
-* The 3d array sits in a contiguous range of memory as an array of float values.
-*
-* The index of the value at r=(x,y,bin) is given by dot(r,hog_strides).
-*/
+ * @param `strides` describes the memory layout of the 3d array of computed features.
+ * The 3d array sits in a contiguous range of memory as an array of float values.
+ *
+ * The index of the value at r=(x,y,bin) is given by dot(r,hog_strides).
+ */
 void hog_features_strides(const struct hog_context *context,struct hog_feature_dims *strides);
 
 /**
-* `shape` describes the dimensions of the 3d array of computed features.
-*/
+ * @param `shape` describes the dimensions of the 3d array of computed features.
+ */
 void hog_features_shape(const struct hog_context *context,struct hog_feature_dims *shape);
 
 
