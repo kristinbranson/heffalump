@@ -378,6 +378,8 @@ struct conv_context conv_init(
         self.workspace=ws;
     } catch(const std::runtime_error& e) {
         ERR(logger,e.what());
+    } catch(...) {
+        ERR(logger,"CONV: Initialization problem.");
     }
     return self;
 }
@@ -388,6 +390,9 @@ void conv_teardown(struct conv_context *self) {
         delete ws;
     } catch(const std::runtime_error& e) {
         ERR(self->logger,e.what());
+    } catch(...) {
+        if(self && self->logger)
+            ERR(self->logger,"CONV: Teardown problem.");
     }
 }
 
@@ -409,6 +414,8 @@ void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){
         }
     } catch(const std::runtime_error &e) {
         ERR(self->logger,"CUDA: %s",e.what());
+    } catch(...) {
+        ERR(self->logger,"CONV: Compute problem.");
     }
 }
 
@@ -416,14 +423,18 @@ size_t conv_output_nbytes(const struct conv_context *self) {
     return priv::sizeof_output(self);
 }
 
-void  conv_copy(const struct conv_context *self, float *out,size_t nbytes){ 
+void conv_copy(const struct conv_context *self, float *out,size_t nbytes){ 
     try {
         CHECK(priv::sizeof_output(self)<=nbytes);
         auto ws=static_cast<priv::workspace*>(self->workspace);
         CUTRY(cudaMemcpyAsync(out,ws->out,priv::sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));
+    } catch(const std::runtime_error &e) {
+        ERR(self->logger,"CONV: %s",e.what());
     } catch(const char* emsg) {
         ERR(self->logger,emsg);
+    } catch(...) {
+        ERR(self->logger,"CONV: Copy problem.");
     }
 }
 
@@ -452,5 +463,7 @@ void conv_no_copy(struct conv_context *self,enum conv_scalar_type type,const voi
         }
     } catch(const std::runtime_error &e) {
         ERR(self->logger,"CUDA: %s",e.what());
+    } catch(...) {
+        ERR(self->logger,"CONV: Compute problem.");
     }
 }

@@ -176,70 +176,76 @@ namespace priv {
             }
 
             ~workspace() {
-                CUTRY(logger,cudaFree(out));
-                CUTRY(logger,cudaFree(dx));
-                CUTRY(logger,cudaFree(dy));
-                CUTRY(logger,cudaFree(mag));
-                CUTRY(logger,cudaFree(theta));
+                try {
+                    CUTRY(logger,cudaFree(out));
+                    CUTRY(logger,cudaFree(dx));
+                    CUTRY(logger,cudaFree(dy));
+                    CUTRY(logger,cudaFree(mag));
+                    CUTRY(logger,cudaFree(theta));
+                } catch(const std::runtime_error& e) {
+                    ERR(logger,"GradientHistogram: %s",e.what());
+                }
             }
 
             int2  image_size() const { return make_int2(params.image.w,params.image.h); }
             // int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
-            void with_stream(cudaStream_t s) {stream=s;}
+            void with_stream(cudaStream_t s)  {stream=s;}
 
-            void compute(const float *dx,const float *dy) const {
-
-                {
-                    dim3 block(32,8);
-                    dim3 grid(
-                        CEIL(params.image.w,block.x),
-                        CEIL(params.image.h,block.y));
-                    priv::gradient_histogram::oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
-                                                                    params.image.w,params.image.h,
-                                                                    params.image.pitch,params.nbins);
-                    // CUTRY(logger,cudaGetLastError());
-                }
-                {
-                    // This is vectorized using float4's.
-                    // As a result, output pointer and size needs to be aligned to 16 bytes.
-                    const size_t n=result_nbytes();
-                    zeros_k<<<CEIL(n,1024*16),1024,0,stream>>>((float4*)out,n/16);
-                }
-                {
-                    dim3 block(32,4); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
-                    dim3 grid(
-                        CEIL(params.image.w,block.x),
-                        CEIL(params.image.h,block.y));
-                    if(params.nbins<=8) {
-                        priv::gradient_histogram::gradhist_k<8><<<grid,block,0,stream>>>(out,mag,theta,
-                                                                                    params.image.w,params.image.h,
-                                                                                    params.nbins,params.cell.w,params.cell.h);
-                    } else if(params.nbins<=16) {
-                        priv::gradient_histogram::gradhist_k<16><<<grid,block,0,stream>>>(out,mag,theta,
-                                                                                    params.image.w,params.image.h,
-                                                                                    params.nbins,params.cell.w,params.cell.h);
-                    } else {
-                        throw std::runtime_error("Unsupported number of histogram bins.");
+            void compute(const float *dx,const float *dy) const  {
+                try {
+                    {
+                        dim3 block(32,8);
+                        dim3 grid(
+                            CEIL(params.image.w,block.x),
+                            CEIL(params.image.h,block.y));
+                        priv::gradient_histogram::oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
+                                                                        params.image.w,params.image.h,
+                                                                        params.image.pitch,params.nbins);
+                        // CUTRY(logger,cudaGetLastError());
                     }
-                    // CUTRY(logger,cudaGetLastError());
+                    {
+                        // This is vectorized using float4's.
+                        // As a result, output pointer and size needs to be aligned to 16 bytes.
+                        const size_t n=result_nbytes();
+                        zeros_k<<<CEIL(n,1024*16),1024,0,stream>>>((float4*)out,n/16);
+                    }
+                    {
+                        dim3 block(32,4); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
+                        dim3 grid(
+                            CEIL(params.image.w,block.x),
+                            CEIL(params.image.h,block.y));
+                        if(params.nbins<=8) {
+                            priv::gradient_histogram::gradhist_k<8><<<grid,block,0,stream>>>(out,mag,theta,
+                                                                                        params.image.w,params.image.h,
+                                                                                        params.nbins,params.cell.w,params.cell.h);
+                        } else if(params.nbins<=16) {
+                            priv::gradient_histogram::gradhist_k<16><<<grid,block,0,stream>>>(out,mag,theta,
+                                                                                        params.image.w,params.image.h,
+                                                                                        params.nbins,params.cell.w,params.cell.h);
+                        } else {
+                            throw std::runtime_error("Unsupported number of histogram bins.");
+                        }
+                        // CUTRY(logger,cudaGetLastError());
+                    }
+                } catch(const std::runtime_error &e) {
+                    ERR(logger,"GradienHistgram - Compute - %s",e.what());
                 }
-
             }
 
-            void* alloc_output(priv::gradient_histogram::alloc_t alloc) const {
-                return alloc(result_nbytes());
+            void copy_last_result(void *buf,size_t nbytes) const  {
+                try {
+                    CHECK(logger,result_nbytes()<=nbytes);
+
+                    CUTRY(logger,cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
+    //                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+    //                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+                    CUTRY(logger,cudaStreamSynchronize(stream));
+                } catch(const std::runtime_error &e) {
+                    ERR(logger,"GradienHistgram - Copy Last Result - %s",e.what());
+                }
             }
 
-            void copy_last_result(void *buf,size_t nbytes) const {
-                //CHECK(logger,result_nbytes<nbytes);
-
-                CUTRY(logger,cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
-//                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
-//                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
-                CUTRY(logger,cudaStreamSynchronize(stream));
-            }
-
-            void output_shape(unsigned shape[3],unsigned strides[4]) const {
+            void output_shape(unsigned shape[3],unsigned strides[4]) const  {
 
                 shape[0]=CEIL(params.image.w,params.cell.w);
                 shape[1]=CEIL(params.image.h,params.cell.h);
@@ -255,6 +261,12 @@ namespace priv {
                 return s.x*s.y*sizeof(float);
             }
 
+            /// @returns the number of bytes in the output buffer
+            size_t result_nbytes() const {
+                unsigned shape[3],strides[4];
+                output_shape(shape,strides);
+                return strides[3]*sizeof(float);
+            }
         private:
             /// @returns the number of bytes in an input image.
             /// Both dx and dy must have this number of bytes.
@@ -262,13 +274,6 @@ namespace priv {
             /// move the data to the GPU.
             size_t input_nbytes() const {
                 return params.image.pitch*params.image.h*sizeof(float);
-            }
-
-            /// @returns the number of bytes in the output buffer
-            size_t result_nbytes() const {
-                unsigned shape[3],strides[4];
-                output_shape(shape,strides);
-                return strides[3]*sizeof(float);
             }
 
             /// @returns the number of bytes required for the output buffer
@@ -341,8 +346,8 @@ extern "C" {
 
     /// Allocate a buffer capable of receiving the result.
     /// This buffer can be passed to `GradientHistogramCopyLastResult`.
-    void* GradientHistogramAllocOutput(const struct gradientHistogram *self,void* (*alloc)(size_t nbytes)) {
-        return WORKSPACE->alloc_output(alloc);
+    size_t GradientHistogramOutputByteCount(const struct gradientHistogram *self) {
+        return WORKSPACE->result_nbytes();
     }
 
     void GradientHistogramCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes) {

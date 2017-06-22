@@ -39,11 +39,11 @@ extern "C"{
     /// Assign a stream for the computation.
     void GradientHistogramWithStream(struct gradientHistogram *self, cudaStream_t stream);
 
-    /// Allocate a buffer capable of receiving the result.
-    /// This buffer can be passed to `GradientHistogramCopyLastResult`.
-    void* GradientHistogramAllocOutput(const struct gradientHistogram *self,void* (*alloc)(size_t nbytes));
+    /// @returns The number of bytes required for the buffer passed to `GradientHistogramCopyLastResult`.
+    size_t GradientHistogramOutputByteCount(const struct gradientHistogram *self);
 
     void GradientHistogramCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes);
+
 
     /// shape and strides are returned in units of float elements.
     ///

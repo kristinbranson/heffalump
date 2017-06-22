@@ -7,7 +7,7 @@
 //#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 //#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+#define CHECK(L,e) do{if(!(e)){ERR(L,"CONV: Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 using namespace std;
 
@@ -238,14 +238,19 @@ struct conv_context conv_init(
         self.out=new float[w*h];
         self.workspace=new priv::workspace(kernel,nkernel,w);
     } catch(...) {
-        ERR(logger,"Problem allocating working storage.");
+        ERR(logger,"CONV: Problem allocating working storage.");
     }
     return self;
 }
 
 void conv_teardown(struct conv_context *self) {     
-    delete [] self->out;
-    delete self->workspace;
+    try {
+        delete [] self->out;
+        delete self->workspace;
+    }catch(...) {
+        if(self && self->logger)
+            ERR(self->logger,"CONV: Problem in releasing working storage.");
+    }
 }
 
 void conv(struct conv_context *self,enum conv_scalar_type type, const void *im) {

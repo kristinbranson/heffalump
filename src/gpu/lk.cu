@@ -12,6 +12,7 @@
 #define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 #define CUTRY_NOTHROW(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode));}} while(0)
 
+#define CEIL(num,den) (((num)+(den)-1)/(den))
 
 namespace priv {
 namespace lk {
@@ -210,7 +211,6 @@ namespace gpu {
             conv_with_stream(&stage3.yy,streams[2]);
             conv_with_stream(&stage3.xt,streams[3]);
             conv_with_stream(&stage3.yt,streams[4]);
-
         }
 
         ~workspace() {
@@ -254,115 +254,115 @@ namespace gpu {
         }
 
         void compute(const void* im) {
-#define CEIL(num,den) (((num)+(den)-1)/(den))
+            try {
+                CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,streams[0]));
+                CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
+                CUTRY(logger,cudaStreamWaitEvent(streams[1],input_ready,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[2],input_ready,0));
+                {
 
-            CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,streams[0]));
-            CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
-            CUTRY(logger,cudaStreamWaitEvent(streams[1],input_ready,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[2],input_ready,0));
-            {
+                    dim3 block(32,4);
+                    dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+                    switch(type) {
+                    #define CASE(T) case lk_##T: diff_k<T><<<grid,block,0,streams[2]>>>(stage1.dt,(T*)input,(T*)last,w,h,pitch); break;
+                        CASE(u8);  CASE(i8);
+                        CASE(u16); CASE(i16);
+                        CASE(u32); CASE(i32); CASE(f32);
+                        CASE(u64); CASE(i64); CASE(f64);
+                        default:;
+                    #undef CASE
+                    }                
 
-                dim3 block(32,4);
-                dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
-                switch(type) {
-                #define CASE(T) case lk_##T: diff_k<T><<<grid,block,0,streams[2]>>>(stage1.dt,(T*)input,(T*)last,w,h,pitch); break;
-                    CASE(u8);  CASE(i8);
-                    CASE(u16); CASE(i16);
-                    CASE(u32); CASE(i32); CASE(f32);
-                    CASE(u64); CASE(i64); CASE(f64);
-                    default:;
-                #undef CASE
-                }                
-
-                // copy kernel uses vectorized load/stores
-#define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
-                CHECK(logger,aligned_to(input,16));// input must be alighned to float4 (16 bytes)
-                CHECK(logger,aligned_to(last,16)); // output must be alighned to float4 (16 bytes)
-                const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
-                CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
-#undef aligned_to
-                switch(type) {
-                #define CASE(T) case lk_##T: cpy_k<T><<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>((T*)last,(T*)input,pitch*h); break;
-                    CASE(u8);  CASE(i8);
-                    CASE(u16); CASE(i16);
-                    CASE(u32); CASE(i32); CASE(f32);
-                    CASE(u64); CASE(i64); CASE(f64);
-                    default:;
-                #undef CASE
-                }
+                    // copy kernel uses vectorized load/stores
+    #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
+                    CHECK(logger,aligned_to(input,16));// input must be alighned to float4 (16 bytes)
+                    CHECK(logger,aligned_to(last,16)); // output must be alighned to float4 (16 bytes)
+                    const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
+                    CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
+    #undef aligned_to
+                    switch(type) {
+                    #define CASE(T) case lk_##T: cpy_k<T><<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>((T*)last,(T*)input,pitch*h); break;
+                        CASE(u8);  CASE(i8);
+                        CASE(u16); CASE(i16);
+                        CASE(u32); CASE(i32); CASE(f32);
+                        CASE(u64); CASE(i64); CASE(f64);
+                        default:;
+                    #undef CASE
+                    }
                 
+                }
+                conv_no_copy(&stage1.dx,type,input);
+                conv_no_copy(&stage1.dy,type,input);          
+
+                // Compute max magnitude for normalizing amplitudes
+                // to avoid denormals (~7% of runtime cost)
+                //
+                // Just grab device pointers to the max magnitudes 
+                // to avoid transfer-cost/sync.
+                const unsigned npx=w*h;
+                mdx.compute(stage1.dx.out,npx);
+                mdy.compute(stage1.dy.out,npx);
+                mdt.compute(stage1.dt,npx);
+
+                CUTRY(logger,cudaEventRecord(stage1.x_done,streams[0]));
+                CUTRY(logger,cudaEventRecord(stage1.y_done,streams[1]));
+                CUTRY(logger,cudaEventRecord(stage1.t_done,streams[2]));
+
+                // syncs to start stage 2
+                // for out=left*right
+                // left dependencies
+                CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.x_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.x_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.y_done,0));
+                // right dependencies
+                CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.y_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.t_done,0));
+                CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.t_done,0));
+
+                {
+                    dim3 block(32*4);
+                    dim3 grid(CEIL(npx,block.x));
+                    mult4_k<<<grid,block,0,streams[0]>>>((float4*)stage2.xx,(float4*)stage1.dx.out,(float4*)stage1.dx.out,npx/4);
+                    mult4_k<<<grid,block,0,streams[1]>>>((float4*)stage2.xy,(float4*)stage1.dx.out,(float4*)stage1.dy.out,npx/4);
+                    mult4_k<<<grid,block,0,streams[2]>>>((float4*)stage2.yy,(float4*)stage1.dy.out,(float4*)stage1.dy.out,npx/4);
+                    mult4_k<<<grid,block,0,streams[3]>>>((float4*)stage2.xt,(float4*)stage1.dx.out,(float4*)stage1.dt,npx/4);
+                    mult4_k<<<grid,block,0,streams[4]>>>((float4*)stage2.yt,(float4*)stage1.dy.out,(float4*)stage1.dt,npx/4);
+                }
+                conv_no_copy(&stage3.xx,conv_f32,stage2.xx);
+                conv_no_copy(&stage3.xy,conv_f32,stage2.xy);
+                conv_no_copy(&stage3.yy,conv_f32,stage2.yy);
+                conv_no_copy(&stage3.xt,conv_f32,stage2.xt);
+                conv_no_copy(&stage3.yt,conv_f32,stage2.yt);
+
+                // make sure stage3 is done
+                for(int i=0;i<4;++i) {
+                    CUTRY(logger,cudaEventRecord(stage3.done,streams[i]));
+                    CUTRY(logger,cudaStreamWaitEvent(streams[i+1],stage3.done,0));
+                }
+
+    //            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
+                {
+                    int n=w*h;
+                    dim3 block(32*4);
+                    dim3 grid(CEIL(n,block.x));
+                    float *out_dx=out;
+                    float *out_dy=out+n;
+                    solve_k<<<grid,block,0,streams[4]>>>(out_dx,out_dy,
+                        stage3.xx.out,
+                        stage3.xy.out,
+                        stage3.yy.out,
+                        stage3.xt.out,
+                        stage3.yt.out,
+                        mdx.out,mdy.out,mdt.out,
+                        n);
+                }
+            } catch(const std::runtime_error& e) {
+                ERR(logger,"LK - %s",e.what());
             }
-            conv_no_copy(&stage1.dx,type,input);
-            conv_no_copy(&stage1.dy,type,input);          
-
-            // Compute max magnitude for normalizing amplitudes
-            // to avoid denormals (~7% of runtime cost)
-            //
-            // Just grab device pointers to the max magnitudes 
-            // to avoid transfer-cost/sync.
-            const unsigned npx=w*h;
-            mdx.compute(stage1.dx.out,npx);
-            mdy.compute(stage1.dy.out,npx);
-            mdt.compute(stage1.dt,npx);
-
-            CUTRY(logger,cudaEventRecord(stage1.x_done,streams[0]));
-            CUTRY(logger,cudaEventRecord(stage1.y_done,streams[1]));
-            CUTRY(logger,cudaEventRecord(stage1.t_done,streams[2]));
-
-            // syncs to start stage 2
-            // for out=left*right
-            // left dependencies
-            CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.x_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.x_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.y_done,0));
-            // right dependencies
-            CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.y_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.t_done,0));
-            CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.t_done,0));
-
-            {
-                dim3 block(32*4);
-                dim3 grid(CEIL(npx,block.x));
-                mult4_k<<<grid,block,0,streams[0]>>>((float4*)stage2.xx,(float4*)stage1.dx.out,(float4*)stage1.dx.out,npx/4);
-                mult4_k<<<grid,block,0,streams[1]>>>((float4*)stage2.xy,(float4*)stage1.dx.out,(float4*)stage1.dy.out,npx/4);
-                mult4_k<<<grid,block,0,streams[2]>>>((float4*)stage2.yy,(float4*)stage1.dy.out,(float4*)stage1.dy.out,npx/4);
-                mult4_k<<<grid,block,0,streams[3]>>>((float4*)stage2.xt,(float4*)stage1.dx.out,(float4*)stage1.dt,npx/4);
-                mult4_k<<<grid,block,0,streams[4]>>>((float4*)stage2.yt,(float4*)stage1.dy.out,(float4*)stage1.dt,npx/4);
-            }
-            conv_no_copy(&stage3.xx,conv_f32,stage2.xx);
-            conv_no_copy(&stage3.xy,conv_f32,stage2.xy);
-            conv_no_copy(&stage3.yy,conv_f32,stage2.yy);
-            conv_no_copy(&stage3.xt,conv_f32,stage2.xt);
-            conv_no_copy(&stage3.yt,conv_f32,stage2.yt);
-
-            // make sure stage3 is done
-            for(int i=0;i<4;++i) {
-                CUTRY(logger,cudaEventRecord(stage3.done,streams[i]));
-                CUTRY(logger,cudaStreamWaitEvent(streams[i+1],stage3.done,0));
-            }
-
-//            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
-            {
-                int n=w*h;
-                dim3 block(32*4);
-                dim3 grid(CEIL(n,block.x));
-                float *out_dx=out;
-                float *out_dy=out+n;
-                solve_k<<<grid,block,0,streams[4]>>>(out_dx,out_dy,
-                    stage3.xx.out,
-                    stage3.xy.out,
-                    stage3.yy.out,
-                    stage3.xt.out,
-                    stage3.yt.out,
-                    mdx.out,mdy.out,mdt.out,
-                    n);
-
-            }
-#undef CEIL            
         }
 
         size_t bytesof_input() const {
@@ -378,10 +378,14 @@ namespace gpu {
         }
 
         void copy_last_result(void * buf,size_t nbytes) const {
-            CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-//            CUTRY(logger,cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
-//            CUTRY(logger,cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
-            CUTRY(logger,cudaStreamSynchronize(streams[4]));
+            try {
+                CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+    //            CUTRY(logger,cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
+    //            CUTRY(logger,cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                CUTRY(logger,cudaStreamSynchronize(streams[4]));
+            } catch(const std::runtime_error& e) {
+                ERR(logger,"LK - %s",e.what());
+            }
         }
 
         cudaStream_t output_stream() const {
