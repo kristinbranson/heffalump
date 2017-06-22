@@ -9,8 +9,8 @@
 #include "imshow.h"
 #include "app.h"
 
-#define W (2048)
-#define H (2048)
+#define W (480)
+#define H (255)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 

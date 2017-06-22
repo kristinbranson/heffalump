@@ -127,8 +127,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         him.buf=disk(nframes/30.0f);
         clock=tic();
         hog(&ctx,him);
-        acc+=(float)toc(&clock);
         hog_features_copy(&ctx,out);
+        acc+=(float)toc(&clock);
         ++nframes;
     }
     hog_teardown(&ctx);

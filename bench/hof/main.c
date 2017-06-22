@@ -103,7 +103,7 @@ static void* disk(double time) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hof_parameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
-        .input={.type=hof_u8,.w=256,.h=256,.pitch=256}, // need this to reserve memory for 1 time point
+        .input={.type=hof_u8,.w=256,.h=256,.pitch=256},
         .cell={16,16},.nbins=8};
     struct hof_context ctx[]={
         hof_init(logger,params),
