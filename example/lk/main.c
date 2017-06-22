@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -52,16 +53,16 @@ static char* delta() {
     return buf;
 }
 
-static float* disk(float time) {
+static void* disk(float time) {
 //    static char *buf=0;
     static float *out=0;
-    static struct conv_context ctx;
+    static struct SeparableConvolutionContext ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={1,1};
     if(!out) {
         ctx=conv_init(logger,256,256,256,ks,nks);        
-        out=conv_alloc(&ctx,malloc);
+        out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     }
 
 
@@ -134,8 +135,8 @@ static float* disk(float time) {
     }
 
 #if 0
-    conv(&ctx,conv_u8,buf);
-    conv_copy(&ctx,out);
+    SeparableConvolution(&ctx,conv_u8,buf);
+    SeparableConvolutionOutputCopy(&ctx,out);
     return out; // output f32
 #else
     return buf; // output u8
@@ -165,36 +166,36 @@ static void autocontrast(const float *out,int n) {
 
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {  
-    struct lk_parameters params={
+    struct LucasKanadeParameters params={
         .sigma={
             .derivative=1.0, // This is something like the edge scale 
             .smoothing=4.0   // This is the object scale
     }};
-    struct lk_context ctx[4]={
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params)
+    struct LucasKanadeContext ctx[4]={
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params)
     };
 
-    float* out=lk_alloc(&ctx[0],malloc);
-    float* out2=lk_alloc(&ctx[0],malloc);
+    float* out=malloc(LucasKanadeOutputByteCount(&ctx[0]));
+    float* out2=malloc(LucasKanadeOutputByteCount(&ctx[0]));
     app_init(logger);
     imshow_contrast(imshow_f32,-10,10);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;    
 
-    lk(&ctx[0],disk(app_uptime_s()/10.0));
-    lk(&ctx[1],disk(app_uptime_s()/10.0));
-    lk(&ctx[2],disk(app_uptime_s()/10.0));
+    LucasKanade(&ctx[0],disk(app_uptime_s()/10.0));
+    LucasKanade(&ctx[1],disk(app_uptime_s()/10.0));
+    LucasKanade(&ctx[2],disk(app_uptime_s()/10.0));
     while(app_is_running()) {
         int i0=((int)nframes)&0x3;
         int i1=((int)nframes+3)&0x3;
         float* input=disk(app_uptime_s()/10.0);
 //        float* input=disk(nframes/5000.0);
         clock=tic();
-        lk(&ctx[i1],input);
-        lk_copy(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
+        LucasKanade(&ctx[i1],input);
+        LucasKanadeCopyOutput(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
         acc+=(float)toc(&clock);
 
 #if 0
@@ -204,9 +205,9 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 #else
         // maybe transpose to get nice ordering
         // for display...sorry messy
-        struct lk_output_dims shape,strides;
-        lk_output_strides(&ctx[0],&strides);
-        lk_output_shape(&ctx[0],&shape);
+        struct LucasKanadeOutputDims shape,strides;
+        LucasKanadeOutputStrides(&ctx[0],&strides);
+        LucasKanadeOutputShape(&ctx[0],&shape);
         if(strides.v!=1) {
             // v is either the inner-most or outer-most dimension
             // when strides.v!=1 we infer it's outermost.
@@ -223,7 +224,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         ++nframes;
     }
     for(int i=0;i<4;++i)
-        lk_teardown(&ctx[i]);
+        LucasKanadeTeardown(&ctx[i]);
     LOG("nframes: %f\n",nframes);
     LOG("Mean Lucas-Kanade time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean Lucas-Kanade throughput: %f Mpx/s\n",1e-6*nframes*ctx[0].w*ctx[0].h/acc);

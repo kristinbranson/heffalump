@@ -15,30 +15,30 @@ extern void gradHist(
     int bin,int nOrients,int softBin,int full);
 
 struct workspace {
-    struct lk_context lk;
+    struct LucasKanadeContext lk;
     float *M,*O;
     float features[]; // use this region for all the intermediate data
 };
 
 
-static size_t features_nelem(const struct hof_context *self) {
+static size_t features_nelem(const struct HOFContext *self) {
     int ncell=(self->params.input.w/self->params.cell.w)*(self->params.input.h/self->params.cell.h);
     return ncell*self->params.nbins;
 }
 
-static size_t features_nbytes(const struct hof_context *self) {
+static size_t features_nbytes(const struct HOFContext *self) {
     return sizeof(float)*features_nelem(self);
 }
 
-static size_t grad_nbytes(const struct hof_context *self) {
+static size_t grad_nbytes(const struct HOFContext *self) {
     return sizeof(float)*self->params.input.w*self->params.input.h;
 }
 
-static size_t workspace_nbytes(const struct hof_context *self) {
+static size_t workspace_nbytes(const struct HOFContext *self) {
     return sizeof(struct workspace)+features_nbytes(self);
 }
 
-static struct workspace* workspace_init(const struct hof_context *self) {
+static struct workspace* workspace_init(const struct HOFContext *self) {
     struct workspace* ws=malloc(workspace_nbytes(self));
     float k[3]={-1,0,1},*ks[]={k,k};
     unsigned 
@@ -47,7 +47,7 @@ static struct workspace* workspace_init(const struct hof_context *self) {
         w=self->params.input.w,
         h=self->params.input.h;
 
-    ws->lk=lk_init(self->logger,self->params.input.type,w,h,self->params.input.pitch,self->params.lk);
+    ws->lk=LucasKanedeInitialize(self->logger,self->params.input.type,w,h,self->params.input.pitch,self->params.lk);
 
     ws->M=malloc(sizeof(float)*w*h*2);
     ws->O=ws->M+w*h;
@@ -77,11 +77,11 @@ static void transpose2d(float *out,const float* in,unsigned w,unsigned h) {
     }
 }
 
-struct hof_context hof_init(
+struct HOFContext hof_init(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct hof_parameters params)
+    const struct HOFParameters params)
 {
-    struct hof_context self={
+    struct HOFContext self={
         .logger=logger,
         .params=params,
         .workspace=workspace_init(&self)
@@ -90,21 +90,21 @@ struct hof_context hof_init(
 }
 
 
-void hof_teardown(struct hof_context *self) {
+void HOFTeardown(struct HOFContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    lk_teardown(&ws->lk);
+    LucasKanadeTeardown(&ws->lk);
     free(ws->M);
     free(self->workspace);
 }
 
 
-void hof(struct hof_context *self,const void* input) {
+void HOFCompute(struct HOFContext *self,const void* input) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    struct lk_output_dims strides;
+    struct LucasKanadeOutputDims strides;
     
     // Compute gradients and convert to polar
-    lk(&ws->lk,input);
-    lk_output_strides(&ws->lk,&strides);
+    LucasKanade(&ws->lk,input);
+    LucasKanadeOutputStrides(&ws->lk,&strides);
     CHECK(strides.v==1); // programmer sanity check: we assume something about the memory order after this
 
     polar_ip(ws->lk.result,ws->lk.result+1,2,ws->lk.w*ws->lk.h);
@@ -132,20 +132,21 @@ void hof(struct hof_context *self,const void* input) {
 Error:;
 }
 
-void* hof_features_alloc(const struct hof_context *self,void* (*alloc)(size_t nbytes)) {
-    return alloc(features_nbytes(self));
+
+size_t HOFOutputByteCount(const struct HOFContext *self) {
+    return features_nbytes(self);
 }
 
-void hof_features_copy(const struct hof_context *self, void *buf,size_t nbytes) {
+void HOFOutputCopy(const struct HOFContext *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
     CHECK(features_nbytes(self)<=nbytes);
     memcpy(buf,ws->features,features_nbytes(self));
     Error:;
 }
 
-void hof_features_strides(const struct hof_context *self,struct hog_feature_dims *strides) {
+void HOFOutputStrides(const struct HOFContext *self,struct hog_feature_dims *strides) {
     struct hog_feature_dims shape;
-    hof_features_shape(self,&shape);
+    HOFOutputShape(self,&shape);
     *strides=(struct hog_feature_dims) {
         .x=1,
         .y=shape.x,
@@ -153,7 +154,7 @@ void hof_features_strides(const struct hof_context *self,struct hog_feature_dims
     };
 }
 
-void hof_features_shape(const struct hof_context *self,struct hog_feature_dims *shape) {
+void HOFOutputShape(const struct HOFContext *self,struct hog_feature_dims *shape) {
     *shape=(struct hog_feature_dims) {
         .x=self->params.input.w/self->params.cell.w,
         .y=self->params.input.h/self->params.cell.h,

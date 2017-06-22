@@ -8,7 +8,7 @@
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     struct gradientHistogram gh;
 };
 
@@ -63,8 +63,8 @@ struct hog_context hog_init(
 
 void hog_teardown(struct hog_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    conv_teardown(&ws->dx);
-    conv_teardown(&ws->dy);
+    SeparableConvolutionTeardown(&ws->dx);
+    SeparableConvolutionTeardown(&ws->dy);
     GradientHistogramDestroy(&ws->gh);
     free(self->workspace);
 }
@@ -74,18 +74,18 @@ void hog(struct hog_context *self,const struct hog_image image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients
-    conv(&ws->dx,image.type,image.buf);
-    conv(&ws->dy,image.type,image.buf);
+    SeparableConvolution(&ws->dx,image.type,image.buf);
+    SeparableConvolution(&ws->dy,image.type,image.buf);
     GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
 }
 
-void* hog_features_alloc(const struct hog_context *self,void* (*alloc)(size_t nbytes)) {
-    return alloc(features_nbytes(self));
+
+size_t hog_features_nbytes(const struct hog_context *self) {
+    return features_nbytes(self);
 }
 
-// FIXME: require caller to give buffer size
-void hog_features_copy(const struct hog_context *self, void *buf) {
-    struct workspace *ws=(struct workspace*)self->workspace;    
+void hog_features_copy(const struct hog_context *self,void *buf,size_t nbytes) {
+    struct workspace *ws=(struct workspace*)self->workspace;
     GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
 }
 

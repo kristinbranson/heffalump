@@ -58,7 +58,7 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     return k;
 }
 
-float conv_last_elapsed_ms(const struct conv_context* self);
+float conv_last_elapsed_ms(const struct SeparableConvolutionContext* self);
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
     float buf[50*2];
@@ -68,8 +68,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         gaussian_derivative(&buf[50],nks[1],3.0f),
     };
     
-    struct conv_context ctx=conv_init(logger,W,H,W,ks,nks);
-    float* out=conv_alloc(&ctx,malloc);
+    struct SeparableConvolutionContext ctx=conv_init(logger,W,H,W,ks,nks);
+    float* out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
     float kern_acc_ms=0.0f;
@@ -77,12 +77,12 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         char* input=delta();
 
         clock=tic();
-        conv(&ctx,conv_u8,input);
+        SeparableConvolution(&ctx,conv_u8,input);
         acc+=(float)toc(&clock);
         kern_acc_ms+=conv_last_elapsed_ms(&ctx);
         ++nframes;
     }
-    conv_teardown(&ctx);
+    SeparableConvolutionTeardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean convolution throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);

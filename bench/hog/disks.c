@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -112,7 +113,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
         hog_init(logger,params,256,256);
-    float* out=hog_features_alloc(&ctx,malloc);
+    float* out=malloc(hog_features_nbytes(&ctx));
 
     struct hog_image him= {
             .type=hog_u8,
@@ -127,8 +128,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         him.buf=disk(nframes/30.0f);
         clock=tic();
         hog(&ctx,him);
+        hog_features_copy(&ctx,out,hog_features_nbytes(&ctx));
         acc+=(float)toc(&clock);
-        hog_features_copy(&ctx,out);
         ++nframes;
     }
     hog_teardown(&ctx);

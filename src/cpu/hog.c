@@ -15,7 +15,7 @@ extern void gradHist(
     int bin,int nOrients,int softBin,int full);
 
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     float *M,*O;
     float features[]; // use this region for all the intermediate data
 };
@@ -81,8 +81,8 @@ struct hog_context hog_init(
 
 void hog_teardown(struct hog_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    conv_teardown(&ws->dx);
-    conv_teardown(&ws->dy);
+    SeparableConvolutionTeardown(&ws->dx);
+    SeparableConvolutionTeardown(&ws->dy);
     free(self->workspace);
 }
 
@@ -91,8 +91,8 @@ void hog(struct hog_context *self,const struct hog_image image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients and convert to polar
-    conv(&ws->dx,image.type,image.buf);
-    conv(&ws->dy,image.type,image.buf);
+    SeparableConvolution(&ws->dx,image.type,image.buf);
+    SeparableConvolution(&ws->dy,image.type,image.buf);
     polar_ip(ws->dx.out,ws->dy.out,self->w*self->h);
 
 
@@ -110,14 +110,15 @@ void hog(struct hog_context *self,const struct hog_image image) {
 Error:;
 }
 
-
-void* hog_features_alloc(const struct hog_context *self,void* (*alloc)(size_t nbytes)) {
-    return alloc(features_nbytes(self));
+size_t hog_features_nbytes(const struct hog_context *self) {
+    return features_nbytes(self);
 }
 
-void hog_features_copy(const struct hog_context *self, void *buf) {
+void hog_features_copy(const struct hog_context *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
+    CHECK(nbytes<=features_nbytes(self));
     memcpy(buf,ws->features,features_nbytes(self));
+Error:;
 }
 
 

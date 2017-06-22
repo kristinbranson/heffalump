@@ -15,5 +15,11 @@ include(cmake/git-tag.cmake)
 include(cmake/ide.cmake)
 
 add_subdirectory(src)
-add_subdirectory(example)
 add_subdirectory(bench)
+
+if(WIN32)
+    add_subdirectory(example)    
+endif()
+
+include(InstallRequiredSystemLibraries)
+include(CPack) # enable packaging

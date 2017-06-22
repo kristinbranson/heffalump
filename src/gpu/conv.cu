@@ -11,7 +11,7 @@
 using namespace std;
 
 // aliasing the standard scalar types simplifies
-// the mapping of type id's to types. See conv().
+// the mapping of type id's to types. See SeparableConvolution().
 using u8 =uint8_t;
 using u16=uint16_t;
 using u32=uint32_t;
@@ -26,12 +26,14 @@ using f64=double;
 /// Private namespace
 /// Nothing in priv is intended to be accessed outside this module.
 namespace priv {
+namespace conv {
+namespace gpu {
     /// returns number of bytes required for output buffer
     static size_t sizeof_output(unsigned w,unsigned h) {
         return sizeof(float)*w*h;
     }
     /// returns number of bytes required for output buffer
-    static size_t sizeof_output(const struct conv_context* self) {
+    static size_t sizeof_output(const struct SeparableConvolutionContext* self) {
         return sizeof_output(self->w,self->h);
     }
 
@@ -44,8 +46,8 @@ namespace priv {
             nkernel[1]=nks[1];
             in=nullptr;
             nbytes_in=0;
-            CUTRY(cudaMalloc(&out,priv::sizeof_output(w,h)));
-            CUTRY(cudaMalloc(&tmp,priv::sizeof_output(w,h)));
+            CUTRY(cudaMalloc(&out,sizeof_output(w,h)));
+            CUTRY(cudaMalloc(&tmp,sizeof_output(w,h)));
             CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nks[0]));
             CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nks[1]));
 
@@ -311,7 +313,7 @@ namespace priv {
     }
 
     /// 2d convolution
-    template<typename T> void conv(struct conv_context *self,const T* input, int is_dev_ptr) {
+    template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
         auto ws=static_cast<workspace*>(self->workspace);
         ws->load_input<T>(input,self->pitch,self->h,is_dev_ptr);
         CHECK(self->w==self->pitch); // TODO: relax this/test this
@@ -348,18 +350,20 @@ namespace priv {
 //        CUTRY(cudaEventSynchronize(ws->stop));
 //        CUTRY(cudaEventElapsedTime(&ws->last_elapsed_ms,ws->start,ws->stop));
     }
-}
+}}} // end priv::conv::gpu
 
 //
 // Interface
 //
 
-extern "C" float conv_last_elapsed_ms(const struct conv_context* self) {
-    auto ws=static_cast<priv::workspace*>(self->workspace);
+using namespace priv::conv::gpu;
+
+extern "C" float conv_last_elapsed_ms(const struct SeparableConvolutionContext* self) {
+    auto ws=static_cast<workspace*>(self->workspace);
     return ws->last_elapsed_ms;
 }
 
-struct conv_context conv_init(
+struct SeparableConvolutionContext conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
@@ -367,9 +371,9 @@ struct conv_context conv_init(
     const float    *kernel[2], // These will be copied in to the context
     const unsigned nkernel[2]
 ) {
-    struct conv_context self;
+    struct SeparableConvolutionContext self;
     try {
-        auto ws=new priv::workspace(kernel,nkernel,w,h,pitch);
+        auto ws=new workspace(kernel,nkernel,w,h,pitch);
         self.logger=logger;
         self.w=w;
         self.h=h;
@@ -378,23 +382,28 @@ struct conv_context conv_init(
         self.workspace=ws;
     } catch(const std::runtime_error& e) {
         ERR(logger,e.what());
+    } catch(...) {
+        ERR(logger,"CONV: Initialization problem.");
     }
     return self;
 }
 
-void conv_teardown(struct conv_context *self) {
+void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     try {
-        auto ws=static_cast<priv::workspace*>(self->workspace);
+        auto ws=static_cast<workspace*>(self->workspace);
         delete ws;
     } catch(const std::runtime_error& e) {
         ERR(self->logger,e.what());
+    } catch(...) {
+        if(self && self->logger)
+            ERR(self->logger,"CONV: Teardown problem.");
     }
 }
 
-void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){
+void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im){
     try {
         switch(type) {
-    #define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im,0); break
+    #define CASE(T) case conv_##T: conv<T>(self,(T*)im,0); break
             CASE(u8);
             CASE(u16);
             CASE(u32);
@@ -409,34 +418,41 @@ void conv(struct conv_context *self,enum conv_scalar_type type,const void *im){
         }
     } catch(const std::runtime_error &e) {
         ERR(self->logger,"CUDA: %s",e.what());
+    } catch(...) {
+        ERR(self->logger,"CONV: Compute problem.");
     }
 }
 
-void* conv_alloc(const struct conv_context *self, void* (*alloc)(size_t nbytes)){ 
-    return alloc(priv::sizeof_output(self));
+size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionContext *self) {
+    return sizeof_output(self);
 }
 
-void  conv_copy(const struct conv_context *self, float *out){ 
+void SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *self, float *out,size_t nbytes){ 
     try {
-        auto ws=static_cast<priv::workspace*>(self->workspace);
-        CUTRY(cudaMemcpyAsync(out,ws->out,priv::sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
+        CHECK(sizeof_output(self)<=nbytes);
+        auto ws=static_cast<workspace*>(self->workspace);
+        CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));
+    } catch(const std::runtime_error &e) {
+        ERR(self->logger,"CONV: %s",e.what());
     } catch(const char* emsg) {
         ERR(self->logger,emsg);
+    } catch(...) {
+        ERR(self->logger,"CONV: Copy problem.");
     }
 }
 
 // CUDA specific usage
 #include <cuda_runtime.h>
-void conv_with_stream(const struct conv_context *self,cudaStream_t stream) {
-    auto ws=static_cast<priv::workspace*>(self->workspace);
+void conv_with_stream(const struct SeparableConvolutionContext *self,cudaStream_t stream) {
+    auto ws=static_cast<workspace*>(self->workspace);
     ws->stream=stream;
 }
 
-void conv_no_copy(struct conv_context *self,enum conv_scalar_type type,const void *im) {
+void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im) {
     try {
         switch(type) {
-#define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im,1); break
+#define CASE(T) case conv_##T: conv<T>(self,(T*)im,1); break
             CASE(u8);
             CASE(u16);
             CASE(u32);
@@ -451,5 +467,7 @@ void conv_no_copy(struct conv_context *self,enum conv_scalar_type type,const voi
         }
     } catch(const std::runtime_error &e) {
         ERR(self->logger,"CUDA: %s",e.what());
+    } catch(...) {
+        ERR(self->logger,"CONV: Compute problem.");
     }
 }

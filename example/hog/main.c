@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -11,10 +12,12 @@
 #include "conv.h"
 #include "hogshow.h"
 
+#define W (16*32)
+#define H (16*32)
 
 // this gives me a hacky way of getting at M and O data
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     float *M,*O;
 };
 
@@ -42,39 +45,28 @@ static unsigned char* im() {
         LARGE_INTEGER t;
         QueryPerformanceCounter(&t);
         sfmt_init_gen_rand(&state,t.LowPart);
-        buf=malloc(256*256);
+        buf=malloc(W*H);
     }
     // ~1.7 GB/s on Intel(R) Core(TM) i7-4770S CPU @ 3.10GHz
     // ~26k fps @ 256x256
-    sfmt_fill_array64(&state,(uint64_t*)buf,(256*256)/sizeof(uint64_t));
-    return buf;
-}
-
-static char* delta() {
-    static char *buf=0;
-    if(!buf) {
-        buf=malloc(256*256);
-        memset(buf,0,256*256);
-        buf[128*256+128]=255;
-    }    
+    sfmt_fill_array64(&state,(uint64_t*)buf,(W*H)/sizeof(uint64_t));
     return buf;
 }
 
 static void* disk(double time) {
     static float *out=0;
-    static struct conv_context ctx;
+    static struct SeparableConvolutionContext ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={3,3};
     if(!out) {
-        ctx=conv_init(logger,256,256,256,ks,nks);
-        out=conv_alloc(&ctx,malloc);
+        ctx=conv_init(logger,W,H,W,ks,nks);
+        out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     }
-
 
     // additive noise
     unsigned char* buf=im();
-    for(int i=0;i<256*256;++i)
+    for(int i=0;i<W*H;++i)
         buf[i]*=0.1;
 
 #if 1 // all disks
@@ -82,8 +74,8 @@ static void* disk(double time) {
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
-        float cx=64.0f*sin(time*6.28)+128.0f,
-              cy=64.0f*cos(time*6.28)+128.0f;
+        float cx=W*(0.25f*sin(time*6.28)+0.5f),
+              cy=H*(0.25f*cos(time*6.28)+0.5f);
         const float r=5.0f;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {
@@ -95,7 +87,7 @@ static void* disk(double time) {
                       dr=r-sqrtf(r2);
                 dr=(dr>1)?1:dr;
                 if(dr>0)
-                    buf[iy*256+ix]=255*dr;
+                    buf[iy*W+ix]=255*dr;
             }
         }
     }
@@ -105,8 +97,10 @@ static void* disk(double time) {
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
     {
-        float cx=32.0f*sin(-2*time*6.28)+128.0f,
-              cy=32.0f*cos(-2*time*6.28)+128.0f;
+        //float cx=32.0f*sin(-2*time*6.28)+128.0f,
+        //      cy=32.0f*cos(-2*time*6.28)+128.0f;
+        float cx=W*(0.125f*sin(-2*time*6.28)+0.5f),
+              cy=H*(0.125f*cos(-2*time*6.28)+0.5f);
         const float r=2.0f;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {
@@ -118,7 +112,7 @@ static void* disk(double time) {
                     dr=r-sqrtf(r2);
                 dr=(dr>1)?1:dr;
                 if(dr>0)
-                    buf[iy*256+ix]=255*dr;
+                    buf[iy*W+ix]=255*dr;
             }
         }
     }
@@ -127,9 +121,9 @@ static void* disk(double time) {
 #if 1
     // A disk.  It's important to have a sub-pixel center.
     // Otherwise the optical-flow is all flickery
-    {
-        float cx=48.0f*sin(7*time*6.28)+128.0f,
-              cy=48.0f*cos(-3*time*6.28)+128.0f;
+    {        
+        float cx=W*(0.1875f*sin( 7*time*6.28)+0.5f),
+              cy=H*(0.1875f*cos(-3*time*6.28)+0.5f);
         const float r=10.0f;
         for(int y=-r-1;y<=(r+1);++y) {
             for(int x=-r-1;x<=(r+1);++x) {
@@ -141,7 +135,7 @@ static void* disk(double time) {
                     dr=r-sqrtf(r2);
                 dr=(dr>1)?1:dr;
                 if(dr>0)
-                    buf[iy*256+ix]=255*dr;
+                    buf[iy*W+ix]=255*dr;
             }
         }
     }
@@ -149,11 +143,11 @@ static void* disk(double time) {
 #endif // all disks
 
 #if 1
-    memcpy(out,buf,256*256); // make a copy so we don't get flashing (imshow input isn't buffered)
+    memcpy(out,buf,W*H); // make a copy so we don't get flashing (imshow input isn't buffered)
     return out; // returns u8 image
 #else
     conv(&ctx,imshow_u8,buf);
-    conv_copy(&ctx,out);
+    SeparableConvolutionOutputCopy(&ctx,out);
 
     return out; // returns f32 image
 #endif
@@ -175,30 +169,29 @@ static void autocontrast(const float *out,int n) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct hog_parameters params={.cell={16,16},.nbins=8};
     struct hog_context ctx=
-        hog_init(logger,params,256,256);
-    float* out=hog_features_alloc(&ctx,malloc);
+        hog_init(logger,params,W,H);
+    float* out=malloc(hog_features_nbytes(&ctx));
 
-    hogshow_set_attr(1,params.cell.w,params.cell.h);
+    hogshow_set_attr(params.cell.w*0.1,params.cell.w,params.cell.h);
 
     app_init(logger);
     imshow_contrast(imshow_u8,0,255);
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
 
+    struct hog_image him={
+        .type=hog_u8,
+        .w=W,.h=H,.pitch=W,
+        .buf=0
+    };
+
     while(app_is_running()) {
-        void* input=disk(app_uptime_s()/10.0);
-
-
-        struct hog_image him= {
-            .type=hog_u8,
-                .w=256,.h=256,.pitch=256,
-                .buf=input
-        };
+        him.buf=disk(app_uptime_s()/10.0);
         clock=tic();
         hog(&ctx,him);
         acc+=(float)toc(&clock);
         
-        hog_features_copy(&ctx,out);
+        hog_features_copy(&ctx,out,hog_features_nbytes(&ctx));
         struct hog_feature_dims shape,strides;
         hog_features_shape(&ctx,&shape);
         hog_features_strides(&ctx,&strides);
@@ -208,7 +201,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         imshow(imshow_f32,shape.x,shape.y,out);
 #else
         hogshow(0,0,&shape,&strides,out);
-        imshow(imshow_u8,256,256,input);
+        imshow(imshow_u8,W,H,him.buf);
 #endif
 
         ++nframes;
