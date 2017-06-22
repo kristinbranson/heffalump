@@ -19,7 +19,7 @@ namespace gpu {
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...); 
 
     struct workspace {
-        workspace(logger_t logger,const struct hof_parameters& params) 
+        workspace(logger_t logger,const struct HOFParameters& params) 
         : logger(logger)
         {
             struct gradientHistogramParameters ghparams;
@@ -31,15 +31,15 @@ namespace gpu {
             ghparams.nbins=params.nbins;
 
             GradientHistogramInit(&gh,&ghparams,logger);
-            lk_=lk_init(logger,
-                static_cast<lk_scalar_type>(params.input.type),
+            lk_=LucasKanedeInitialize(logger,
+                static_cast<LucasKanadeScalarType>(params.input.type),
                 params.input.w,params.input.h,params.input.pitch,params.lk);
-            GradientHistogramWithStream(&gh,lk_output_stream(&lk_));
+            GradientHistogramWithStream(&gh,LucasKanadeOutputStream(&lk_));
         }
 
         ~workspace() {
             GradientHistogramDestroy(&gh);
-            lk_teardown(&lk_);
+            LucasKanadeTeardown(&lk_);
         }
 
         size_t output_nbytes() const {
@@ -72,7 +72,7 @@ namespace gpu {
 
         void compute(const void *input) {    
             // Compute gradients and convert to polar
-            lk(&lk_,input);            
+            LucasKanade(&lk_,input);            
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
             GradientHistogram(&gh,dx,dy);
@@ -81,19 +81,19 @@ namespace gpu {
 //    private: 
         logger_t logger;
         struct gradientHistogram gh;
-        struct lk_context lk_;
+        struct LucasKanadeContext lk_;
     };
 
 }}} // priv::hof::gpu
 
 using namespace priv::hof::gpu;
 
-struct hof_context hof_init(
+struct HOFContext hof_init(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct hof_parameters params)
+    const struct HOFParameters params)
 {
     workspace *ws=nullptr;
-    struct hof_context self={logger,params,nullptr};
+    struct HOFContext self={logger,params,nullptr};
     try {
         ws=new workspace(logger,params);
         self.workspace=ws;
@@ -108,35 +108,35 @@ struct hof_context hof_init(
 }
 
 
-void hof_teardown(struct hof_context *self) {
+void HOFTeardown(struct HOFContext *self) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     delete ws;    
 }
 
 
-void hof(struct hof_context *self,const void* input) {
+void HOFCompute(struct HOFContext *self,const void* input) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     ws->compute(input);
 }
 
 
-size_t hof_features_nbytes(const struct hof_context *self) {
+size_t HOFOutputByteCount(const struct HOFContext *self) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     return ws->output_nbytes();
 }
 
-void hof_features_copy(const struct hof_context *self, void *buf, size_t nbytes) {
+void HOFOutputCopy(const struct HOFContext *self, void *buf, size_t nbytes) {
     auto ws=static_cast<struct workspace*>(self->workspace);    
     ws->copy_last_result(buf,nbytes);
-//    lk_copy(&ws->lk_,(float*)buf,nbytes);
+//    LucasKanadeCopyOutput(&ws->lk_,(float*)buf,nbytes);
 }
 
-void hof_features_strides(const struct hof_context *self,struct hog_feature_dims *strides) {
+void HOFOutputStrides(const struct HOFContext *self,struct hog_feature_dims *strides) {
     auto ws=static_cast<struct workspace*>(self->workspace);    
     ws->output_strides(strides);
 }
 
-void hof_features_shape(const struct hof_context *self,struct hog_feature_dims *shape) {
+void HOFOutputShape(const struct HOFContext *self,struct hog_feature_dims *shape) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     ws->output_shape(shape);
 }

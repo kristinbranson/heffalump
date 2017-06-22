@@ -1,3 +1,5 @@
+#pragma warning(disable:4244)
+
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>   // vsprintf, sprintf
@@ -101,14 +103,14 @@ static void* disk(double time) {
 
                                                                  
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hof_parameters params={
+    struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.type=hof_u8,.w=256,.h=256,.pitch=256},
         .cell={16,16},.nbins=8};
-    struct hof_context ctx[]={
+    struct HOFContext ctx[]={
         hof_init(logger,params),
     };
-    float* out=malloc(hof_features_nbytes(&ctx[0]));
+    float* out=malloc(HOFOutputByteCount(&ctx[0]));
     
     TicTocTimer clock;
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
@@ -118,8 +120,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         void* input=disk(nframes*0.1f);
 
         clock=tic();
-        hof(&ctx[0],input);
-        hof_features_copy(&ctx[0],out,16*16*8*sizeof(float));
+        HOFCompute(&ctx[0],input);
+        HOFOutputCopy(&ctx[0],out,16*16*8*sizeof(float));
         {
             float dt=(float)toc(&clock);
             mindt=fminf(dt,mindt);
@@ -130,7 +132,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         ++nframes;
     }
     
-    hof_teardown(&ctx[0]);
+    HOFTeardown(&ctx[0]);
     LOG("nframes: %f\n",nframes);
     LOG("Mean HoF time: %f +/- %f us [%f,%f]\n",
         1e6*acc/(float)nframes,

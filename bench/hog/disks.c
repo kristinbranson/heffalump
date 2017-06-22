@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>

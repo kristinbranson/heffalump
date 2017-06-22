@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -16,7 +17,7 @@
 
 // this gives me a hacky way of getting at M and O data
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     float *M,*O;
 };
 
@@ -54,13 +55,13 @@ static unsigned char* im() {
 
 static void* disk(double time) {
     static float *out=0;
-    static struct conv_context ctx;
+    static struct SeparableConvolutionContext ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={3,3};
     if(!out) {
         ctx=conv_init(logger,W,H,W,ks,nks);
-        out=malloc(conv_output_nbytes(&ctx));
+        out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     }
 
     // additive noise
@@ -146,7 +147,7 @@ static void* disk(double time) {
     return out; // returns u8 image
 #else
     conv(&ctx,imshow_u8,buf);
-    conv_copy(&ctx,out);
+    SeparableConvolutionOutputCopy(&ctx,out);
 
     return out; // returns f32 image
 #endif

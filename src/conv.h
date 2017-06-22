@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-enum conv_scalar_type {
+enum SeparableConvolutionScalarType {
     conv_u8,
     conv_u16,
     conv_u32,
@@ -19,7 +19,7 @@ enum conv_scalar_type {
     conv_f64,
 };
 
-struct conv_context {
+struct SeparableConvolutionContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     unsigned w,h;
     int pitch;
@@ -42,7 +42,7 @@ struct conv_context {
     The `pitch` is the number of elements (pixels) spanned by one line of the image.
     The `w` and `h` specify the rectangle over which the computation will be performed.
 */
-struct conv_context conv_init(
+struct SeparableConvolutionContext conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
@@ -53,22 +53,22 @@ struct conv_context conv_init(
 
 /** Release any resources associated with the context 
 */
-void conv_teardown(struct conv_context *self);
+void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self);
 
 /** Performs convolution
     The result is stored in the context.  To extract the results to a buffer in RAM,
-    see the `conv_alloc` and `conv_copy` functions.
+    see the `conv_alloc` and `SeparableConvolutionOutputCopy` functions.
 */
-void conv(struct conv_context *self,enum conv_scalar_type type,const void *im);
+void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im);
 
 /** @Returns the number of bytes required for the output buffer
- *  @see conv_copy()
+ *  @see SeparableConvolutionOutputCopy()
  */
-size_t conv_output_nbytes(const struct conv_context *self);
+size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionContext *self);
 
 /** Copy the result buffer to out.
 */
-void  conv_copy(const struct conv_context *self, float *out,size_t nbytes);
+void  SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *self, float *out,size_t nbytes);
 
 #ifdef __cplusplus
 }

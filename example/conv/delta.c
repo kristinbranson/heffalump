@@ -79,8 +79,8 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         gaussian_derivative(&buf[25],nks[1],3.0f),
     };
     
-    struct conv_context ctx=conv_init(logger,256,256,256,ks,nks);
-    size_t nbytes=conv_output_nbytes(&ctx);
+    struct SeparableConvolutionContext ctx=conv_init(logger,256,256,256,ks,nks);
+    size_t nbytes=SeparableConvolutionOutputByteCount(&ctx);
     float* out=malloc(nbytes);
     app_init(logger);
     imshow_contrast(imshow_f32,0,1); //max(nks[0],1)*max(nks[1],1)*255.0);
@@ -90,15 +90,15 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         char* input=delta();
 
         clock=tic();
-        conv(&ctx,conv_u8,input);
+        SeparableConvolution(&ctx,conv_u8,input);
         acc+=(float)toc(&clock);
         ++nframes;
 
-        conv_copy(&ctx,out,nbytes);
+        SeparableConvolutionOutputCopy(&ctx,out,nbytes);
         autocontrast(out,ctx.w*ctx.h);
         imshow(imshow_f32,ctx.w,ctx.h,out);
     }
-    conv_teardown(&ctx);
+    SeparableConvolutionTeardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean convolution time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean convolution throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);
@@ -109,9 +109,9 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
  * TIMING DATA 
  * 
  * (5x5 kernel, 256x256 inputs, HAL9001)
- * - cpu Release - malloc in conv
+ * - cpu Release - malloc in SeparableConvolution
  *   57.5 MB/s (1138 us/frame)
- * - cpu Release - no malloc in conv
+ * - cpu Release - no malloc in SeparableConvolution
  *   67.8 MB/s (966 us/frame)
  * - cpu Release - specialize for unit strides
  *   77.7 MB/s (843 us/frame)

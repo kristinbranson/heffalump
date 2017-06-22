@@ -2,7 +2,7 @@ add_subdirectory(cpu/pdollar gradientHist)
 
 set(tgt hog_gpu)
 cuda_add_library(${tgt} STATIC 
-    conv.h gpu/conv.cu
+    conv.h gpu/conv.h gpu/conv.cu
     gpu/gradientHist.h gpu/gradientHist.cu
     gpu/hog.c
     gpu/absmax.h gpu/absmax.cu

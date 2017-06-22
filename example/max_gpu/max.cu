@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 #include <windows.h>
 #include <new>
 #include <stdexcept>

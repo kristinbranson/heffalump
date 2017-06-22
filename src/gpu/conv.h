@@ -9,9 +9,9 @@ extern "C" {
 #include <cuda_runtime.h>
 #include "../conv.h"
 
-void conv_with_stream(const struct conv_context *self,cudaStream_t stream);
+    void conv_with_stream(const struct SeparableConvolutionContext *self,cudaStream_t stream);
 
-void conv_no_copy(struct conv_context *self,enum conv_scalar_type type,const void *im);
+    void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im);
 
 #ifdef __cplusplus
 }

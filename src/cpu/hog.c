@@ -15,7 +15,7 @@ extern void gradHist(
     int bin,int nOrients,int softBin,int full);
 
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     float *M,*O;
     float features[]; // use this region for all the intermediate data
 };
@@ -81,8 +81,8 @@ struct hog_context hog_init(
 
 void hog_teardown(struct hog_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    conv_teardown(&ws->dx);
-    conv_teardown(&ws->dy);
+    SeparableConvolutionTeardown(&ws->dx);
+    SeparableConvolutionTeardown(&ws->dy);
     free(self->workspace);
 }
 
@@ -91,8 +91,8 @@ void hog(struct hog_context *self,const struct hog_image image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients and convert to polar
-    conv(&ws->dx,image.type,image.buf);
-    conv(&ws->dy,image.type,image.buf);
+    SeparableConvolution(&ws->dx,image.type,image.buf);
+    SeparableConvolution(&ws->dy,image.type,image.buf);
     polar_ip(ws->dx.out,ws->dy.out,self->w*self->h);
 
 

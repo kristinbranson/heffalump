@@ -26,6 +26,8 @@ using f64= double;
 
 
 namespace priv {
+namespace conv {
+namespace cpu {
 
     // TODO: unit vs non-unit strides
     // TODO: test with images thinner than kernel width
@@ -155,7 +157,7 @@ namespace priv {
 
     /// Separable convolution
     /// If nk==0 for a dimension, just copies that dimension
-    template<typename T> void conv(const struct conv_context *self, T* in) {
+    template<typename T> void conv(const struct SeparableConvolutionContext *self, T* in) {
         using pitch_t=decltype(self->pitch);
         using sz_t=decltype(self->w);
 
@@ -219,9 +221,9 @@ namespace priv {
         float *kernel[2];
         unsigned nkernel[2];
     };
-}
+}}} // end priv::conv::cpu
 
-struct conv_context conv_init(
+struct SeparableConvolutionContext conv_init(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
@@ -229,21 +231,22 @@ struct conv_context conv_init(
     const float    *kernel[2],
     const unsigned nkernel[2]
 ) {
-    struct conv_context self;
+    using namespace priv::conv::cpu;
+    struct SeparableConvolutionContext self;
     self.logger=logger;
     self.w=w;
     self.h=h;
     self.pitch=pitch;
     try {
         self.out=new float[w*h];
-        self.workspace=new priv::workspace(kernel,nkernel,w);
+        self.workspace=new workspace(kernel,nkernel,w);
     } catch(...) {
         ERR(logger,"CONV: Problem allocating working storage.");
     }
     return self;
 }
 
-void conv_teardown(struct conv_context *self) {     
+void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {     
     try {
         delete [] self->out;
         delete self->workspace;
@@ -253,9 +256,10 @@ void conv_teardown(struct conv_context *self) {
     }
 }
 
-void conv(struct conv_context *self,enum conv_scalar_type type, const void *im) {
+void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type, const void *im) {
+    using namespace priv::conv::cpu;
     switch(type) {
-        #define CASE(T) case conv_##T: priv::conv<T>(self,(T*)im); break
+        #define CASE(T) case conv_##T: conv<T>(self,(T*)im); break
         CASE(u8);
         CASE(u16);
         CASE(u32);
@@ -267,15 +271,17 @@ void conv(struct conv_context *self,enum conv_scalar_type type, const void *im) 
         CASE(f32);
         CASE(f64);
         #undef CASE
+        default: 
+            ERR(self->logger,"CONV: Unrecognized scalar type id.");
     }
 }
  
-size_t conv_output_nbytes(const struct conv_context *self) {
+size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionContext *self) {
     return self->pitch*self->h*sizeof(float);
 }
 
-void  conv_copy(const struct conv_context *self, float *out, size_t nbytes) {    
-    CHECK(self->logger,conv_output_nbytes(self)<=nbytes);
+void  SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *self, float *out, size_t nbytes) {    
+    CHECK(self->logger,SeparableConvolutionOutputByteCount(self)<=nbytes);
     memcpy(out,self->out,self->pitch*self->h*sizeof(float));
     Error:;
 }

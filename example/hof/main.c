@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -47,13 +48,13 @@ static unsigned char* im() {
 
 static void* disk(double time) {
     static float *out=0;
-    static struct conv_context ctx;
+    static struct SeparableConvolutionContext ctx;
     static float k[]={1.0f,1.0f,1.0f,1.0f,1.0f};
     static float *ks[]={k,k};
     static unsigned nks[]={3,3};
     if(!out) {
         ctx=conv_init(logger,W,H,W,ks,nks);
-        out=malloc(conv_output_nbytes(&ctx));
+        out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     }
 
     // additive noise
@@ -138,8 +139,8 @@ static void* disk(double time) {
     memcpy(out,buf,W*H); // make a copy so we don't get flashing (imshow input isn't buffered)
     return out; // returns u8 image
 #else
-    conv(&ctx,imshow_u8,buf);
-    conv_copy(&ctx,out);
+    SeparableConvolution(&ctx,imshow_u8,buf);
+    SeparableConvolutionOutputCopy(&ctx,out);
 
     return out; // returns f32 image
 #endif
@@ -159,13 +160,13 @@ static void autocontrast(const float *out,int n) {
 }
                                                                   
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hof_parameters params={
+    struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.type=hof_u8,.w=W,.h=H,.pitch=W}, // need this to reserve memory for 1 time point
         .cell={8,8},.nbins=8};
-    struct hof_context ctx=hof_init(logger,params);
-    int nbytes=2*W*H*sizeof(float);
-    float* out=(float*) malloc(nbytes); //hof_features_alloc(&ctx,malloc);
+    struct HOFContext ctx=hof_init(logger,params);
+    size_t nbytes=HOFOutputByteCount(&ctx);
+    float* out=(float*) malloc(nbytes);
     
 
     hogshow_set_attr(params.cell.w*0.25f,params.cell.w,params.cell.h);
@@ -179,13 +180,13 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         void* input=disk(app_uptime_s()/10.0);
 
         clock=tic();
-        hof(&ctx,input);
-        hof_features_copy(&ctx,out,nbytes);
+        HOFCompute(&ctx,input);
+        HOFOutputCopy(&ctx,out,nbytes);
         acc+=(float)toc(&clock);
                 
         struct hog_feature_dims shape,strides;
-        hof_features_shape(&ctx,&shape);
-        hof_features_strides(&ctx,&strides);
+        HOFOutputShape(&ctx,&shape);
+        HOFOutputStrides(&ctx,&strides);
 
 #if 0
         //imshow_contrast(imshow_f32,-10,10);
@@ -202,7 +203,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         Sleep(10);
         ++nframes;
     }
-    hof_teardown(&ctx);
+    HOFTeardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean HoF time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean HoF throughput: %f Mpx/s\n",1e-6*nframes*ctx.params.input.w*ctx.params.input.h/acc);

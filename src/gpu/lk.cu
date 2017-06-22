@@ -32,7 +32,7 @@ namespace gpu {
     using f32=float;
     using f64=double;
 
-    unsigned bytes_per_pixel(enum conv_scalar_type type) {
+    unsigned bytes_per_pixel(enum SeparableConvolutionScalarType type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
         return bpp[type];
     }
@@ -146,9 +146,9 @@ namespace gpu {
     }
 
     struct workspace {
-        workspace(logger_t logger, enum lk_scalar_type type, unsigned w, unsigned h, unsigned p, const struct lk_parameters& params) 
+        workspace(logger_t logger, enum LucasKanadeScalarType type, unsigned w, unsigned h, unsigned p, const struct LucasKanadeParameters& params) 
         : logger(logger)
-        , type((conv_scalar_type)type)
+        , type((SeparableConvolutionScalarType)type)
         , mdx(logger)
         , mdy(logger)
         , mdt(logger)
@@ -233,8 +233,8 @@ namespace gpu {
                 delete [] kernels.derivative;
 
                 CUTRY_NOTHROW(logger,cudaFree(stage1.dt));
-                conv_teardown(&stage1.dx);
-                conv_teardown(&stage1.dy);
+                SeparableConvolutionTeardown(&stage1.dx);
+                SeparableConvolutionTeardown(&stage1.dy);
 
                 CUTRY_NOTHROW(logger,cudaFree(stage2.xx));
                 CUTRY_NOTHROW(logger,cudaFree(stage2.xy));
@@ -242,11 +242,11 @@ namespace gpu {
                 CUTRY_NOTHROW(logger,cudaFree(stage2.xt));
                 CUTRY_NOTHROW(logger,cudaFree(stage2.yt));
 
-                conv_teardown(&stage3.xx);
-                conv_teardown(&stage3.xy);
-                conv_teardown(&stage3.yy);
-                conv_teardown(&stage3.xt);
-                conv_teardown(&stage3.yt);
+                SeparableConvolutionTeardown(&stage3.xx);
+                SeparableConvolutionTeardown(&stage3.xy);
+                SeparableConvolutionTeardown(&stage3.yy);
+                SeparableConvolutionTeardown(&stage3.xt);
+                SeparableConvolutionTeardown(&stage3.yt);
 
             } catch(const std::runtime_error& e) {
                 ERR(logger,"LK - %s",e.what());
@@ -407,12 +407,12 @@ namespace gpu {
             gaussian_derivative(kernels.derivative,nder,params.sigma.derivative);
         }                
 
-        enum conv_scalar_type type;
+        enum SeparableConvolutionScalarType type;
         unsigned w,h,pitch;
         logger_t logger;
         void *last,*input;
         struct  {
-            struct conv_context dx,dy;        
+            struct SeparableConvolutionContext dx,dy;        
             float *dt;       
             cudaEvent_t x_done,y_done,t_done;
         } stage1; // initial computation of gradient in x,y, and t
@@ -423,10 +423,10 @@ namespace gpu {
             float *xx,*xy,*yy,*xt,*yt;
         } stage2; // weighting and normalization
         struct {
-            conv_context xx,xy,yy,xt,yt;
+            SeparableConvolutionContext xx,xy,yy,xt,yt;
             cudaEvent_t done;
         } stage3;
-        struct lk_parameters params;
+        struct LucasKanadeParameters params;
         cudaStream_t streams[5];
         cudaEvent_t input_ready;
         struct {
@@ -442,15 +442,15 @@ namespace gpu {
 
 using priv::lk::gpu::workspace;
 
-extern "C" struct lk_context lk_init(
+extern "C" struct LucasKanadeContext LucasKanedeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum lk_scalar_type type,
+    enum LucasKanadeScalarType type,
     unsigned w,
     unsigned h,
     unsigned pitch,
-    const struct lk_parameters params
+    const struct LucasKanadeParameters params
 ){
-    struct lk_context self={0};
+    struct LucasKanadeContext self={0};
     try {
         workspace *ws=new workspace(logger,type,w,h,pitch,params);        
         self.logger=logger;
@@ -464,40 +464,40 @@ extern "C" struct lk_context lk_init(
     return self;
 }
 
-void lk_teardown(struct lk_context *self) {
+void LucasKanadeTeardown(struct LucasKanadeContext *self) {
     if(!self) return;
     struct workspace* ws=(struct workspace*)self->workspace;
     delete ws;
     self->workspace=nullptr;
 }
 
-void lk(struct lk_context *self,const void *im) {
+void LucasKanade(struct LucasKanadeContext *self,const void *im) {
     struct workspace* ws=(struct workspace*)self->workspace;
     ws->compute(im);
 }
 
 
-size_t lk_output_nbytes(const struct lk_context *self) {
+size_t LucasKanadeOutputByteCount(const struct LucasKanadeContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     return ws->bytesof_output();
 }
 
-void  lk_copy(const struct lk_context *self, float *out, size_t nbytes) {
+void  LucasKanadeCopyOutput(const struct LucasKanadeContext *self, float *out, size_t nbytes) {
     struct workspace* ws=(struct workspace*)self->workspace;
     ws->copy_last_result(out,nbytes);
 }
 
-void lk_output_strides(const struct lk_context *self,struct lk_output_dims* strides) {
-    struct lk_output_dims s={1,self->w,self->w*self->h};
+void LucasKanadeOutputStrides(const struct LucasKanadeContext *self,struct LucasKanadeOutputDims* strides) {
+    struct LucasKanadeOutputDims s={1,self->w,self->w*self->h};
     *strides=s;
 }
 
-void lk_output_shape(const struct lk_context *self,struct lk_output_dims* shape) {
-    struct lk_output_dims s={self->w,self->h,2};
+void LucasKanadeOutputShape(const struct LucasKanadeContext *self,struct LucasKanadeOutputDims* shape) {
+    struct LucasKanadeOutputDims s={self->w,self->h,2};
     *shape=s;
 }
 
-cudaStream_t lk_output_stream(const struct lk_context *self) {
+cudaStream_t LucasKanadeOutputStream(const struct LucasKanadeContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     return ws->output_stream();
 }

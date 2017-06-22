@@ -1,3 +1,4 @@
+#pragma warning(disable:4244)
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -36,7 +37,7 @@ static char* delta() {
     return buf;
 }
 
-static float* disk(double time) {
+static void* disk(double time) {
     // additive noise
     unsigned char* buf=malloc(256*256);
     memset(buf,0,256*256);
@@ -109,13 +110,13 @@ static float* disk(double time) {
 
 
     // conv(&ctx,conv_u8,buf);
-    // conv_copy(&ctx,out);
+    // SeparableConvolutionOutputCopy(&ctx,out);
 
     return buf;
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {  
-    struct lk_parameters params={
+    struct LucasKanadeParameters params={
         .sigma={
             .derivative=1.0, // This is something like the edge scale 
             .smoothing=4.0   // This is the object scale
@@ -123,29 +124,29 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 
 //    cudaSetDevice(1);
 
-    struct lk_context ctx[4]={
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params),
-        lk_init(logger,lk_u8,256,256,256,params)
+    struct LucasKanadeContext ctx[4]={
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
+        LucasKanedeInitialize(logger,lk_u8,256,256,256,params)
     };
 
 
-    float* out=malloc(lk_output_nbytes(&ctx[0]));
+    float* out=malloc(LucasKanadeOutputByteCount(&ctx[0]));
     TicTocTimer clock;
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
     float mindt=FLT_MAX,maxdt=0.0f;
 
-    lk(&ctx[0],disk(0.0f));
-    lk(&ctx[1],disk(0.03333f));
-    lk(&ctx[2],disk(0.06666f));
+    LucasKanade(&ctx[0],disk(0.0f));
+    LucasKanade(&ctx[1],disk(0.03333f));
+    LucasKanade(&ctx[2],disk(0.06666f));
     while(nframes<NREPS) {
         int i0=((int)nframes)&0x3;
         int i1=((int)nframes+3)&0x3;
         float* input=disk(nframes/30.0);
         clock=tic();
-        lk(&ctx[i1],input);        
-        lk_copy(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
+        LucasKanade(&ctx[i1],input);        
+        LucasKanadeCopyOutput(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
         {
             float dt=(float)toc(&clock);
             mindt=fminf(dt,mindt);
@@ -157,7 +158,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         ++nframes;
     }
     for(int i=0;i<4;++i)
-        lk_teardown(&ctx[i]);
+        LucasKanadeTeardown(&ctx[i]);
     LOG("nframes: %f\n",nframes);
     LOG("Mean Lucas-Kanade time: %f +/- %f us [%f,%f]\n",
         1e6*acc/(float)nframes,

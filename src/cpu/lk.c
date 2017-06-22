@@ -20,14 +20,14 @@ struct workspace {
     } dI;
     float *last;
 
-    enum lk_scalar_type type;
+    enum LucasKanadeScalarType type;
     int pitch;
-    struct conv_context smooth,dx,dy;
+    struct SeparableConvolutionContext smooth,dx,dy;
 
     float data[];
 };
 
-static unsigned bytes_per_pixel(enum lk_scalar_type type) {
+static unsigned bytes_per_pixel(enum LucasKanadeScalarType type) {
     const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
     return bpp[type];
 }
@@ -57,11 +57,11 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
 
 static struct workspace* workspace_create(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct lk_parameters* params,    
+    const struct LucasKanadeParameters* params,    
     unsigned w,
     unsigned h,
     unsigned pitch,
-    enum lk_scalar_type type) 
+    enum LucasKanadeScalarType type) 
 {
     unsigned nbytes_of_image=bytes_per_pixel(type)*pitch*h;
     unsigned
@@ -123,18 +123,18 @@ static struct workspace* workspace_create(
     return self;
 }
 
-struct lk_context lk_init(
+struct LucasKanadeContext LucasKanedeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum lk_scalar_type type,
+    enum LucasKanadeScalarType type,
     unsigned w,
     unsigned h,
     unsigned pitch,
-    const struct lk_parameters params
+    const struct LucasKanadeParameters params
 ){
     struct workspace *ws=workspace_create(logger,&params,w,h,pitch,type);
     
 
-    struct lk_context self={
+    struct LucasKanadeContext self={
         .logger=logger,
         .w=w,
         .h=h,
@@ -150,16 +150,16 @@ Error:
     return self;
 }
 
-void lk_teardown(struct lk_context *self){
+void LucasKanadeTeardown(struct LucasKanadeContext *self){
     struct workspace *ws=(struct workspace*)self->workspace;
-    conv_teardown(&ws->smooth);
-    conv_teardown(&ws->dx);
-    conv_teardown(&ws->dy);
+    SeparableConvolutionTeardown(&ws->smooth);
+    SeparableConvolutionTeardown(&ws->dx);
+    SeparableConvolutionTeardown(&ws->dy);
     free(self->result);
     free(self->workspace);
 }
 
-extern void diff(float *out,enum lk_scalar_type type,const void *a,const void *b,unsigned w,unsigned h,unsigned p);
+extern void diff(float *out,enum LucasKanadeScalarType type,const void *a,const void *b,unsigned w,unsigned h,unsigned p);
 
 // normalizes input in-place to unit magnitude
 // and returns the normalizing factor.
@@ -171,13 +171,13 @@ static float norm_ip(float *v,int npx) {
     return mag;
 }
 
-void lk(struct lk_context *self, const void *im){
+void LucasKanade(struct LucasKanadeContext *self, const void *im){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
     // dI/dx
-    conv(&ws->dx,ws->type,im);
+    SeparableConvolution(&ws->dx,ws->type,im);
     // dI/dy
-    conv(&ws->dy,ws->type,im);
+    SeparableConvolution(&ws->dy,ws->type,im);
     // dI/dt
     diff(ws->dI.t,ws->type,im,ws->last,self->w,self->h,ws->pitch);
 
@@ -208,8 +208,8 @@ void lk(struct lk_context *self, const void *im){
               *b=jobs[i].b;
         for(;out<end;++out,++a,++b)
             *out=*a**b;
-        conv(&ws->smooth,conv_f32,jobs[i].out);
-        conv_copy(&ws->smooth,jobs[i].out,conv_output_nbytes(&ws->smooth)); // TODO: avoid this copy
+        SeparableConvolution(&ws->smooth,conv_f32,jobs[i].out);
+        SeparableConvolutionOutputCopy(&ws->smooth,jobs[i].out,SeparableConvolutionOutputByteCount(&ws->smooth)); // TODO: avoid this copy
     }
     
     // Solve the 2x2 linear system for the flow
@@ -250,11 +250,11 @@ void lk(struct lk_context *self, const void *im){
     memcpy(ws->last,im,bytes_per_pixel(ws->type)*ws->pitch*self->h);
 }
 
-size_t lk_output_nbytes(const struct lk_context *self) {
+size_t LucasKanadeOutputByteCount(const struct LucasKanadeContext *self) {
     return sizeof(float)*self->w*self->h*2;
 }
 
-void lk_copy(const struct lk_context *self, float *out, size_t nbytes){
+void LucasKanadeCopyOutput(const struct LucasKanadeContext *self, float *out, size_t nbytes){
     const size_t n=sizeof(float)*self->w*self->h*2;
     CHECK(self->logger,nbytes>=n);
     memcpy(out,self->result,n);
@@ -262,15 +262,15 @@ Error:;
 }
 
 
-void lk_output_strides(const struct lk_context *self,struct lk_output_dims* strides) {
-    struct lk_output_dims s={.x=2,.y=2*self->w,.v=1};
+void LucasKanadeOutputStrides(const struct LucasKanadeContext *self,struct LucasKanadeOutputDims* strides) {
+    struct LucasKanadeOutputDims s={.x=2,.y=2*self->w,.v=1};
     *strides=s;
 }
 
 /**
 * `shape` describes the dimensions of the 3d array of computed velocities.
 */
-void lk_output_shape(const struct lk_context *self,struct lk_output_dims* shape) {
-    struct lk_output_dims s={.x=self->w,.y=self->h,.v=2};
+void LucasKanadeOutputShape(const struct LucasKanadeContext *self,struct LucasKanadeOutputDims* shape) {
+    struct LucasKanadeOutputDims s={.x=self->w,.y=self->h,.v=2};
     *shape=s;
 }

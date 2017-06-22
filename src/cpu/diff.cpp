@@ -5,13 +5,15 @@
 // Assumes inputs both use the same pitch for rows
 
 namespace priv {
+namespace diff {
+namespace cpu {
 
     template<typename T> void diff(float *out,T *a,T *b,unsigned w,unsigned h, unsigned p) {
         for(unsigned y=0;y<h;++y)
             for(unsigned x=0;x<w;++x)
                 out[y*w+x]=float(a[y*p+x])-float(b[y*p+x]);
     }
-}
+}}}
 
 enum diff_scalar_type {
     diff_u8,
@@ -40,8 +42,9 @@ using f32=float;
 using f64=double;
 
 extern "C" void diff(float *out,enum diff_scalar_type type,void *a,void *b,unsigned w,unsigned h,unsigned p) {
+    using namespace priv::diff::cpu;
     switch(type) {
-        #define CASE(T) case diff_##T: priv::diff<T>(out,(T*)a,(T*)b,w,h,p); break
+        #define CASE(T) case diff_##T: diff<T>(out,(T*)a,(T*)b,w,h,p); break
         CASE(u8);
         CASE(u16);
         CASE(u32);

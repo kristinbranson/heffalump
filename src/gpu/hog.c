@@ -8,7 +8,7 @@
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 struct workspace {
-    struct conv_context dx,dy;
+    struct SeparableConvolutionContext dx,dy;
     struct gradientHistogram gh;
 };
 
@@ -63,8 +63,8 @@ struct hog_context hog_init(
 
 void hog_teardown(struct hog_context *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    conv_teardown(&ws->dx);
-    conv_teardown(&ws->dy);
+    SeparableConvolutionTeardown(&ws->dx);
+    SeparableConvolutionTeardown(&ws->dy);
     GradientHistogramDestroy(&ws->gh);
     free(self->workspace);
 }
@@ -74,8 +74,8 @@ void hog(struct hog_context *self,const struct hog_image image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients
-    conv(&ws->dx,image.type,image.buf);
-    conv(&ws->dy,image.type,image.buf);
+    SeparableConvolution(&ws->dx,image.type,image.buf);
+    SeparableConvolution(&ws->dy,image.type,image.buf);
     GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
 }
 

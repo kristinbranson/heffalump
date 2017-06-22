@@ -22,8 +22,8 @@
 #define CEIL(num,den) ((num+den-1)/den)
 
 namespace priv {      
-
-    namespace gradient_histogram {
+namespace gradient_histogram {
+namespace gpu {
         struct workspace;
         using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
         using alloc_t=void* (*)(size_t nbytes);
@@ -94,8 +94,7 @@ namespace priv {
                    ((y==0||y==(h-1))?(8.0f/7.0f):1.0f)/
                    float(cw*ch);
         }
-
-        template<int MAX_NBINS>
+        
         __global__ void gradhist_k(
             float * __restrict__ out,
             const float * __restrict__ mag,
@@ -163,7 +162,7 @@ namespace priv {
 
 
         struct workspace {
-            workspace(const struct gradientHistogramParameters* params,priv::gradient_histogram::logger_t logger)
+            workspace(const struct gradientHistogramParameters* params,priv::gradient_histogram::gpu::logger_t logger)
                 : logger(logger)
                 , params(*params) // grab a copy
                 , stream(nullptr)
@@ -191,41 +190,31 @@ namespace priv {
             // int2  cell_size()  const { return make_int2(params.cell.w,params.cell.h); }
             void with_stream(cudaStream_t s)  {stream=s;}
 
-            void compute(const float *dx,const float *dy) const  {
+            void compute(const float *dx,const float *dy) const  {                
                 try {
                     {
                         dim3 block(32,8);
                         dim3 grid(
                             CEIL(params.image.w,block.x),
                             CEIL(params.image.h,block.y));
-                        priv::gradient_histogram::oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
+                        oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
                                                                         params.image.w,params.image.h,
                                                                         params.image.pitch,params.nbins);
-                        // CUTRY(logger,cudaGetLastError());
                     }
                     {
                         // This is vectorized using float4's.
                         // As a result, output pointer and size needs to be aligned to 16 bytes.
                         const size_t n=result_nbytes();
-                        zeros_k<<<CEIL(n,1024*16),1024,0,stream>>>((float4*)out,n/16);
+                        zeros_k<<<unsigned(CEIL(n,size_t(1024*16))),1024,0,stream>>>((float4*)out,n/size_t(16));
                     }
                     {
                         dim3 block(32,4); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
                         dim3 grid(
                             CEIL(params.image.w,block.x),
                             CEIL(params.image.h,block.y));
-                        if(params.nbins<=8) {
-                            priv::gradient_histogram::gradhist_k<8><<<grid,block,0,stream>>>(out,mag,theta,
-                                                                                        params.image.w,params.image.h,
-                                                                                        params.nbins,params.cell.w,params.cell.h);
-                        } else if(params.nbins<=16) {
-                            priv::gradient_histogram::gradhist_k<16><<<grid,block,0,stream>>>(out,mag,theta,
-                                                                                        params.image.w,params.image.h,
-                                                                                        params.nbins,params.cell.w,params.cell.h);
-                        } else {
-                            throw std::runtime_error("Unsupported number of histogram bins.");
-                        }
-                        // CUTRY(logger,cudaGetLastError());
+                        gradhist_k<<<grid,block,0,stream>>>(out,mag,theta,
+                                                                params.image.w,params.image.h,
+                                                                params.nbins,params.cell.w,params.cell.h);
                     }
                 } catch(const std::runtime_error &e) {
                     ERR(logger,"GradienHistgram - Compute - %s",e.what());
@@ -283,15 +272,14 @@ namespace priv {
                 return 16*CEIL(n,16); // align to 16 bytes (float4)
             }
 
-            priv::gradient_histogram::logger_t logger;
+            priv::gradient_histogram::gpu::logger_t logger;
             struct gradientHistogramParameters params;
             cudaStream_t stream;
             // device pointers
             float *out,*dx,*dy,*mag,*theta;
         };
 
-    }
-}
+}}} // end priv::gradient_histogram::gpu
 
 extern "C" {
 
@@ -306,7 +294,7 @@ extern "C" {
             // Assert requirements
             CHECK(logger,param->cell.w<param->image.w);
             CHECK(logger,param->cell.h<param->image.h);
-            self->workspace=new priv::gradient_histogram::workspace(param,logger);
+            self->workspace=new priv::gradient_histogram::gpu::workspace(param,logger);
         }  catch(const std::bad_alloc& e) {
             ERR(logger,"Allocation failed: %s",e.what());
         } catch(...) {
@@ -314,7 +302,7 @@ extern "C" {
         }
     }
 
-#define WORKSPACE ((priv::gradient_histogram::workspace*)(self->workspace))
+#define WORKSPACE ((priv::gradient_histogram::gpu::workspace*)(self->workspace))
 
     void GradientHistogramDestroy(struct gradientHistogram* self) {
         delete WORKSPACE;
