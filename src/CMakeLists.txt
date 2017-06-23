@@ -1,6 +1,6 @@
 add_subdirectory(cpu/pdollar gradientHist)
 
-set(tgt hog_gpu)
+set(tgt heffalump_gpu)
 cuda_add_library(${tgt} STATIC 
     conv.h gpu/conv.h gpu/conv.cu
     gpu/gradientHist.h gpu/gradientHist.cu
@@ -13,7 +13,7 @@ target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 set_property(TARGET ${tgt} PROPERTY CXX_STANDARD 11)
 set_property(TARGET ${tgt} PROPERTY C_STANDARD   99)
 
-set(tgt hog_cpu)
+set(tgt heffalump_cpu)
 add_library(${tgt} STATIC
     conv.h cpu/conv.cpp
     lk.h   cpu/lk.c cpu/diff.cpp
@@ -25,5 +25,5 @@ target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 set_property(TARGET ${tgt} PROPERTY CXX_STANDARD 11)
 set_property(TARGET ${tgt} PROPERTY C_STANDARD   99)
 
-install(FILES conv.h lk.h hog.h hog.h DESTINATION include)
-install(TARGETS hog_gpu hog_cpu DESTINATION lib)
+install(FILES conv.h lk.h hog.h hog.h DESTINATION include/heffalump)
+install(TARGETS heffalump_gpu heffalump_cpu DESTINATION lib)
