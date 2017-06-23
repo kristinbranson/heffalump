@@ -8,6 +8,7 @@ cuda_add_library(${tgt} STATIC
     gpu/absmax.h gpu/absmax.cu
     lk.h gpu/lk.h gpu/lk.cu
     hof.h gpu/hof.cpp
+    api.h api.c
 )
 target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 set_property(TARGET ${tgt} PROPERTY CXX_STANDARD 11)
@@ -19,6 +20,7 @@ add_library(${tgt} STATIC
     lk.h   cpu/lk.c cpu/diff.cpp
     hog.h  cpu/hog.c
     hof.h  cpu/hof.c
+    api.h api.c
 )
 target_link_libraries(${tgt} gradientHist)
 target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
