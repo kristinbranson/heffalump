@@ -125,10 +125,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 //    cudaSetDevice(1);
 
     struct LucasKanadeContext ctx[4]={
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params)
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params)
     };
 
 
@@ -137,15 +137,15 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
     float mindt=FLT_MAX,maxdt=0.0f;
 
-    LucasKanade(&ctx[0],disk(0.0f));
-    LucasKanade(&ctx[1],disk(0.03333f));
-    LucasKanade(&ctx[2],disk(0.06666f));
+    LucasKanade(&ctx[0],disk(0.0f),lk_u8);
+    LucasKanade(&ctx[1],disk(0.03333f),lk_u8);
+    LucasKanade(&ctx[2],disk(0.06666f),lk_u8);
     while(nframes<NREPS) {
         int i0=((int)nframes)&0x3;
         int i1=((int)nframes+3)&0x3;
         float* input=disk(nframes/30.0);
         clock=tic();
-        LucasKanade(&ctx[i1],input);        
+        LucasKanade(&ctx[i1],input,lk_u8);
         LucasKanadeCopyOutput(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
         {
             float dt=(float)toc(&clock);

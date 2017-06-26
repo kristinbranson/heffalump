@@ -26,7 +26,7 @@ enum HOFScalarType {
 struct HOFParameters {
     struct LucasKanadeParameters lk;
     struct { int w,h; } cell;
-    struct { enum HOFScalarType type; unsigned w,h,pitch; } input;
+    struct { unsigned w,h,pitch; } input;
     int nbins;
 };
 
@@ -43,8 +43,9 @@ struct HOFContext hof_init(
 void HOFTeardown(struct HOFContext *context);
 
 void HOFCompute(
-    struct HOFContext     *context,
-    const void *input);
+    struct HOFContext *context,
+    const void *input,
+    enum HOFScalarType type);
 
 /** @Returns the number of bytes required for the output buffer
  *  @see hog_features_copy()

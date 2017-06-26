@@ -47,7 +47,7 @@ static struct workspace* workspace_init(const struct HOFContext *self) {
         w=self->params.input.w,
         h=self->params.input.h;
 
-    ws->lk=LucasKanedeInitialize(self->logger,self->params.input.type,w,h,self->params.input.pitch,self->params.lk);
+    ws->lk=LucasKanedeInitialize(self->logger,w,h,self->params.input.pitch,self->params.lk);
 
     ws->M=malloc(sizeof(float)*w*h*2);
     ws->O=ws->M+w*h;
@@ -98,12 +98,12 @@ void HOFTeardown(struct HOFContext *self) {
 }
 
 
-void HOFCompute(struct HOFContext *self,const void* input) {
+void HOFCompute(struct HOFContext *self,const void* input,enum HOFScalarType type) {
     struct workspace* ws=(struct workspace*)self->workspace;
     struct LucasKanadeOutputDims strides;
     
     // Compute gradients and convert to polar
-    LucasKanade(&ws->lk,input);
+    LucasKanade(&ws->lk,input,type);
     LucasKanadeOutputStrides(&ws->lk,&strides);
     CHECK(strides.v==1); // programmer sanity check: we assume something about the memory order after this
 

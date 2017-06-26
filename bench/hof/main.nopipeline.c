@@ -105,7 +105,7 @@ static void* disk(double time) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
-        .input={.type=hof_u8,.w=256,.h=256,.pitch=256},
+        .input={.w=256,.h=256,.pitch=256},
         .cell={16,16},.nbins=8};
     struct HOFContext ctx[]={
         hof_init(logger,params),
@@ -120,7 +120,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         void* input=disk(nframes*0.1f);
 
         clock=tic();
-        HOFCompute(&ctx[0],input);
+        HOFCompute(&ctx[0],input,hof_u8);
         HOFOutputCopy(&ctx[0],out,16*16*8*sizeof(float));
         {
             float dt=(float)toc(&clock);

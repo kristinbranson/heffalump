@@ -23,7 +23,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
     va_start(ap,fmt);
     vsprintf(buf1,fmt,ap);
     va_end(ap);
-#if 0
+#if 1
     sprintf(buf2,"%s(%d): %s()\n\t - %s\n",file,line,function,buf1);
 #else
     sprintf(buf2,"%s\n",buf1);
@@ -162,7 +162,7 @@ static void autocontrast(const float *out,int n) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
-        .input={.type=hof_u8,.w=W,.h=H,.pitch=W}, // need this to reserve memory for 1 time point
+        .input={.w=W,.h=H,.pitch=W}, // need this to reserve memory for 1 time point
         .cell={8,8},.nbins=8};
     struct HOFContext ctx=hof_init(logger,params);
     size_t nbytes=HOFOutputByteCount(&ctx);
@@ -180,7 +180,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         void* input=disk(app_uptime_s()/10.0);
 
         clock=tic();
-        HOFCompute(&ctx,input);
+        HOFCompute(&ctx,input,hof_u8);
         HOFOutputCopy(&ctx,out,nbytes);
         acc+=(float)toc(&clock);
                 

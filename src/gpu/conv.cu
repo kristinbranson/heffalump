@@ -4,7 +4,7 @@
 #include <cuda_runtime.h>
 #include "conv.h"
 
-#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(logger,#e); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define CHECK(e) do{if(!(e)) throw(std::runtime_error(#e));}while(0)
 
@@ -28,6 +28,8 @@ using f64=double;
 namespace priv {
 namespace conv {
 namespace gpu {
+    using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
+
     /// returns number of bytes required for output buffer
     static size_t sizeof_output(unsigned w,unsigned h) {
         return sizeof(float)*w*h;
@@ -39,8 +41,9 @@ namespace gpu {
 
     /// Manages working storage and resources
     struct workspace {
-        workspace(const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p)
-        : stream(nullptr) 
+        workspace(logger_t logger, const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p)
+        : logger(logger)
+        , stream(nullptr) 
         {
             nkernel[0]=nks[0];
             nkernel[1]=nks[1];
@@ -95,6 +98,7 @@ namespace gpu {
         float *kernels[2]; ///< device pointers
         unsigned nkernel[2];
 
+        logger_t logger;
         cudaStream_t stream;
 
         cudaEvent_t start,stop; ///< profiling
@@ -315,6 +319,7 @@ namespace gpu {
     /// 2d convolution
     template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
         auto ws=static_cast<workspace*>(self->workspace);
+        logger_t logger=self->logger;
         ws->load_input<T>(input,self->pitch,self->h,is_dev_ptr);
         CHECK(self->w==self->pitch); // TODO: relax this/test this
         
@@ -373,7 +378,7 @@ struct SeparableConvolutionContext conv_init(
 ) {
     struct SeparableConvolutionContext self;
     try {
-        auto ws=new workspace(kernel,nkernel,w,h,pitch);
+        auto ws=new workspace(logger,kernel,nkernel,w,h,pitch);
         self.logger=logger;
         self.w=w;
         self.h=h;
@@ -431,6 +436,7 @@ void SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *se
     try {
         CHECK(sizeof_output(self)<=nbytes);
         auto ws=static_cast<workspace*>(self->workspace);
+        logger_t logger=self->logger;
         CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));
     } catch(const std::runtime_error &e) {

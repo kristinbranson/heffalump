@@ -105,7 +105,7 @@ static void* disk(double time) {
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
-        .input={.type=hof_u8,.w=256,.h=256,.pitch=256},
+        .input={.w=256,.h=256,.pitch=256},
         .cell={16,16},.nbins=8};
     struct HOFContext ctx[]={
         hof_init(logger,params),
@@ -119,16 +119,16 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     float acc2=0.0,acc=0.0f,nframes=0.0f; 
     float mindt=FLT_MAX,maxdt=0.0f;
 
-    HOFCompute(&ctx[0],disk(0.0f));
-    HOFCompute(&ctx[0],disk(0.1f));
-    HOFCompute(&ctx[0],disk(0.2f));
+    HOFCompute(&ctx[0],disk(0.0f),hof_u8);
+    HOFCompute(&ctx[0],disk(0.1f),hof_u8);
+    HOFCompute(&ctx[0],disk(0.2f),hof_u8);
     while(nframes<NREPS) {
         int i0=((int)nframes)&0x3;
         int i1=((int)nframes+3)&0x3;
         void* input=disk(nframes*0.1f);
 
         clock=tic();
-        HOFCompute(&ctx[i1],input);
+        HOFCompute(&ctx[i1],input,hof_u8);
         HOFOutputCopy(&ctx[i0],out,16*16*8*sizeof(float));
         {
             float dt=(float)toc(&clock);

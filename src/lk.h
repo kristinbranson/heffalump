@@ -58,7 +58,6 @@ struct LucasKanadeContext {
 */
 struct LucasKanadeContext LucasKanedeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum LucasKanadeScalarType type,
     unsigned w,
     unsigned h,
     unsigned pitch,
@@ -77,7 +76,7 @@ void LucasKanadeTeardown(struct LucasKanadeContext *self);
     The input image is stored in the context as the last timepoint.
     For the first image, the last timepoint is a blank image.
 */
-void LucasKanade(struct LucasKanadeContext *self,const void *im);
+void LucasKanade(struct LucasKanadeContext *self,const void *im,enum LucasKanadeScalarType type);
 
 /** @Returns the number of bytes required for the output buffer 
  *  @see LucasKanadeCopyOutput()

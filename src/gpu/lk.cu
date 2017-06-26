@@ -32,7 +32,7 @@ namespace gpu {
     using f32=float;
     using f64=double;
 
-    unsigned bytes_per_pixel(enum SeparableConvolutionScalarType type) {
+    unsigned bytes_per_pixel(enum LucasKanadeScalarType type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
         return bpp[type];
     }
@@ -146,9 +146,8 @@ namespace gpu {
     }
 
     struct workspace {
-        workspace(logger_t logger, enum LucasKanadeScalarType type, unsigned w, unsigned h, unsigned p, const struct LucasKanadeParameters& params) 
+        workspace(logger_t logger, unsigned w, unsigned h, unsigned p, const struct LucasKanadeParameters& params) 
         : logger(logger)
-        , type((SeparableConvolutionScalarType)type)
         , mdx(logger)
         , mdy(logger)
         , mdt(logger)
@@ -253,7 +252,7 @@ namespace gpu {
             }
         }
 
-        void compute(const void* im) {
+        void compute(const void* im, enum LucasKanadeScalarType type) {
             try {
                 CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,streams[0]));
                 CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
@@ -291,8 +290,8 @@ namespace gpu {
                     }
                 
                 }
-                conv_no_copy(&stage1.dx,type,input);
-                conv_no_copy(&stage1.dy,type,input);          
+                conv_no_copy(&stage1.dx,(SeparableConvolutionScalarType)type,input);
+                conv_no_copy(&stage1.dy,(SeparableConvolutionScalarType)type,input);
 
                 // Compute max magnitude for normalizing amplitudes
                 // to avoid denormals (~7% of runtime cost)
@@ -366,7 +365,7 @@ namespace gpu {
         }
 
         size_t bytesof_input() const {
-            return bytes_per_pixel(type)*pitch*h;
+            return bytes_per_pixel(lk_f64)*pitch*h; // use worst-case scenario
         }
 
         size_t bytesof_intermediate() const {
@@ -407,7 +406,6 @@ namespace gpu {
             gaussian_derivative(kernels.derivative,nder,params.sigma.derivative);
         }                
 
-        enum SeparableConvolutionScalarType type;
         unsigned w,h,pitch;
         logger_t logger;
         void *last,*input;
@@ -444,7 +442,6 @@ using priv::lk::gpu::workspace;
 
 extern "C" struct LucasKanadeContext LucasKanedeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum LucasKanadeScalarType type,
     unsigned w,
     unsigned h,
     unsigned pitch,
@@ -452,7 +449,7 @@ extern "C" struct LucasKanadeContext LucasKanedeInitialize(
 ){
     struct LucasKanadeContext self={0};
     try {
-        workspace *ws=new workspace(logger,type,w,h,pitch,params);        
+        workspace *ws=new workspace(logger,w,h,pitch,params);        
         self.logger=logger;
         self.w=w;
         self.h=h;
@@ -471,9 +468,9 @@ void LucasKanadeTeardown(struct LucasKanadeContext *self) {
     self->workspace=nullptr;
 }
 
-void LucasKanade(struct LucasKanadeContext *self,const void *im) {
+void LucasKanade(struct LucasKanadeContext *self,const void *im,enum LucasKanadeScalarType type) {
     struct workspace* ws=(struct workspace*)self->workspace;
-    ws->compute(im);
+    ws->compute(im,type);
 }
 
 

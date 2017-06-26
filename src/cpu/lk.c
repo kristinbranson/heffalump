@@ -20,7 +20,6 @@ struct workspace {
     } dI;
     float *last;
 
-    enum LucasKanadeScalarType type;
     int pitch;
     struct SeparableConvolutionContext smooth,dx,dy;
 
@@ -60,10 +59,9 @@ static struct workspace* workspace_create(
     const struct LucasKanadeParameters* params,    
     unsigned w,
     unsigned h,
-    unsigned pitch,
-    enum LucasKanadeScalarType type) 
+    unsigned pitch) 
 {
-    unsigned nbytes_of_image=bytes_per_pixel(type)*pitch*h;
+    unsigned nbytes_of_image=bytes_per_pixel(lk_f64)*pitch*h; // just allocate for largest type
     unsigned
         nder=(unsigned)(8*params->sigma.derivative),
         nsmo=(unsigned)(6*params->sigma.smoothing);
@@ -76,7 +74,6 @@ static struct workspace* workspace_create(
     if(!self)
         return 0;
 
-    self->type=type;
     self->pitch=pitch;
 
     self->kernels.nder=nder;
@@ -125,14 +122,12 @@ static struct workspace* workspace_create(
 
 struct LucasKanadeContext LucasKanedeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    enum LucasKanadeScalarType type,
     unsigned w,
     unsigned h,
     unsigned pitch,
     const struct LucasKanadeParameters params
 ){
-    struct workspace *ws=workspace_create(logger,&params,w,h,pitch,type);
-    
+    struct workspace *ws=workspace_create(logger,&params,w,h,pitch);
 
     struct LucasKanadeContext self={
         .logger=logger,
@@ -144,8 +139,7 @@ struct LucasKanadeContext LucasKanedeInitialize(
     CHECK(self.logger,self.result);
     CHECK(self.logger,self.workspace);
 
-
-    memset(ws->last,0,bytes_per_pixel(type)*pitch*h);
+    memset(ws->last,0,bytes_per_pixel(lk_f64)*pitch*h);
 Error:
     return self;
 }
@@ -171,15 +165,15 @@ static float norm_ip(float *v,int npx) {
     return mag;
 }
 
-void LucasKanade(struct LucasKanadeContext *self, const void *im){
+void LucasKanade(struct LucasKanadeContext *self, const void *im,enum LucasKanadeScalarType type){
     struct workspace *ws=(struct workspace*)self->workspace;
     const unsigned npx=self->w*self->h;
     // dI/dx
-    SeparableConvolution(&ws->dx,ws->type,im);
+    SeparableConvolution(&ws->dx,type,im);
     // dI/dy
-    SeparableConvolution(&ws->dy,ws->type,im);
+    SeparableConvolution(&ws->dy,type,im);
     // dI/dt
-    diff(ws->dI.t,ws->type,im,ws->last,self->w,self->h,ws->pitch);
+    diff(ws->dI.t,type,im,ws->last,self->w,self->h,ws->pitch);
 
     // norm
     // This is important for keeping things numerically stable
@@ -247,7 +241,7 @@ void LucasKanade(struct LucasKanadeContext *self, const void *im){
     }
 
     // replace last image now that we're done using it
-    memcpy(ws->last,im,bytes_per_pixel(ws->type)*ws->pitch*self->h);
+    memcpy(ws->last,im,bytes_per_pixel(type)*ws->pitch*self->h);
 }
 
 size_t LucasKanadeOutputByteCount(const struct LucasKanadeContext *self) {

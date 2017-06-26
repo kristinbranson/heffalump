@@ -32,7 +32,6 @@ namespace gpu {
 
             GradientHistogramInit(&gh,&ghparams,logger);
             lk_=LucasKanedeInitialize(logger,
-                static_cast<LucasKanadeScalarType>(params.input.type),
                 params.input.w,params.input.h,params.input.pitch,params.lk);
             GradientHistogramWithStream(&gh,LucasKanadeOutputStream(&lk_));
         }
@@ -70,9 +69,9 @@ namespace gpu {
             GradientHistogramCopyLastResult(&gh,buf,nbytes);
         }
 
-        void compute(const void *input) {    
+        void compute(const void *input,enum HOFScalarType type) {    
             // Compute gradients and convert to polar
-            LucasKanade(&lk_,input);            
+            LucasKanade(&lk_,input,(LucasKanadeScalarType)type);
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
             GradientHistogram(&gh,dx,dy);
@@ -114,9 +113,9 @@ void HOFTeardown(struct HOFContext *self) {
 }
 
 
-void HOFCompute(struct HOFContext *self,const void* input) {
+void HOFCompute(struct HOFContext *self,const void* input,enum HOFScalarType type) {
     auto ws=static_cast<struct workspace*>(self->workspace);
-    ws->compute(input);
+    ws->compute(input,type);
 }
 
 

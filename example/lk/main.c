@@ -172,10 +172,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
             .smoothing=4.0   // This is the object scale
     }};
     struct LucasKanadeContext ctx[4]={
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params),
-        LucasKanedeInitialize(logger,lk_u8,256,256,256,params)
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params),
+        LucasKanedeInitialize(logger,256,256,256,params)
     };
 
     float* out=malloc(LucasKanadeOutputByteCount(&ctx[0]));
@@ -185,16 +185,16 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;    
 
-    LucasKanade(&ctx[0],disk(app_uptime_s()/10.0));
-    LucasKanade(&ctx[1],disk(app_uptime_s()/10.0));
-    LucasKanade(&ctx[2],disk(app_uptime_s()/10.0));
+    LucasKanade(&ctx[0],disk(app_uptime_s()/10.0),lk_u8);
+    LucasKanade(&ctx[1],disk(app_uptime_s()/10.0),lk_u8);
+    LucasKanade(&ctx[2],disk(app_uptime_s()/10.0),lk_u8);
     while(app_is_running()) {
         int i0=((int)nframes)&0x3;
         int i1=((int)nframes+3)&0x3;
         float* input=disk(app_uptime_s()/10.0);
 //        float* input=disk(nframes/5000.0);
         clock=tic();
-        LucasKanade(&ctx[i1],input);
+        LucasKanade(&ctx[i1],input,lk_u8);
         LucasKanadeCopyOutput(&ctx[i0],out,2*ctx[0].w*ctx[0].h*sizeof(float));
         acc+=(float)toc(&clock);
 
