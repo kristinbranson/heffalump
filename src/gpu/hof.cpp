@@ -47,7 +47,7 @@ namespace gpu {
             return strides[3]*sizeof(float);
         }
 
-        void output_strides (struct hog_feature_dims* strides) const {
+        void output_strides (struct HOGFeatureDims* strides) const {
             unsigned sh[3],st[4];
             GradientHistogramOutputShape(&gh,sh,st);
             // TODO: verify dimensions are mapped right
@@ -56,7 +56,7 @@ namespace gpu {
             strides->bin=st[2];
         }
 
-        void output_shape(struct hog_feature_dims* shape) const {
+        void output_shape(struct HOGFeatureDims* shape) const {
             unsigned sh[3],st[4];
             GradientHistogramOutputShape(&gh,sh,st);
             // TODO: verify dimensions are mapped right
@@ -87,7 +87,7 @@ namespace gpu {
 
 using namespace priv::hof::gpu;
 
-struct HOFContext hof_init(
+struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOFParameters params)
 {
@@ -130,12 +130,12 @@ void HOFOutputCopy(const struct HOFContext *self, void *buf, size_t nbytes) {
 //    LucasKanadeCopyOutput(&ws->lk_,(float*)buf,nbytes);
 }
 
-void HOFOutputStrides(const struct HOFContext *self,struct hog_feature_dims *strides) {
+void HOFOutputStrides(const struct HOFContext *self,struct HOGFeatureDims *strides) {
     auto ws=static_cast<struct workspace*>(self->workspace);    
     ws->output_strides(strides);
 }
 
-void HOFOutputShape(const struct HOFContext *self,struct hog_feature_dims *shape) {
+void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     ws->output_shape(shape);
 }

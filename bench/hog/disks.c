@@ -110,12 +110,12 @@ static void* disk(double time) {
 #define NREPS (1000)
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={16,16},.nbins=8};
-    struct hog_context ctx=
-        hog_init(logger,params,256,256);
-    float* out=malloc(hog_features_nbytes(&ctx));
+    struct HOGParameters params={.cell={16,16},.nbins=8};
+    struct HOGContext ctx=
+        HOGInitialize(logger,params,256,256);
+    float* out=malloc(HOGOutputByteCount(&ctx));
 
-    struct hog_image him= {
+    struct HOGImage him= {
             .type=hog_u8,
                 .w=256,.h=256,.pitch=256,
                 .buf=0
@@ -127,12 +127,12 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     while(nframes<NREPS) {
         him.buf=disk(nframes/30.0f);
         clock=tic();
-        hog(&ctx,him);
-        hog_features_copy(&ctx,out,hog_features_nbytes(&ctx));
+        HOGCompute(&ctx,him);
+        HOGOutputCopy(&ctx,out,HOGOutputByteCount(&ctx));
         acc+=(float)toc(&clock);
         ++nframes;
     }
-    hog_teardown(&ctx);
+    HOGTeardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean HoG time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean HoG throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);

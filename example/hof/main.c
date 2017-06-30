@@ -164,7 +164,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.w=W,.h=H,.pitch=W}, // need this to reserve memory for 1 time point
         .cell={8,8},.nbins=8};
-    struct HOFContext ctx=hof_init(logger,params);
+    struct HOFContext ctx=HOFInitialize(logger,params);
     size_t nbytes=HOFOutputByteCount(&ctx);
     float* out=(float*) malloc(nbytes);
     
@@ -184,7 +184,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         HOFOutputCopy(&ctx,out,nbytes);
         acc+=(float)toc(&clock);
                 
-        struct hog_feature_dims shape,strides;
+        struct HOGFeatureDims shape,strides;
         HOFOutputShape(&ctx,&shape);
         HOFOutputStrides(&ctx,&strides);
 

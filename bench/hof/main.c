@@ -108,10 +108,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         .input={.w=256,.h=256,.pitch=256},
         .cell={16,16},.nbins=8};
     struct HOFContext ctx[]={
-        hof_init(logger,params),
-        hof_init(logger,params),
-        hof_init(logger,params),
-        hof_init(logger,params),
+        HOFInitialize(logger,params),
+        HOFInitialize(logger,params),
+        HOFInitialize(logger,params),
+        HOFInitialize(logger,params),
     };
     float* out=malloc(HOFOutputByteCount(&ctx[0]));
     

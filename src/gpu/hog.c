@@ -12,22 +12,22 @@ struct workspace {
     struct gradientHistogram gh;
 };
 
-static size_t features_nelem(const struct hog_context *self) {
+static size_t features_nelem(const struct HOGContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     unsigned shape[3],strides[4];
     GradientHistogramOutputShape(&ws->gh,shape,strides);
     return strides[3];
 }
 
-static size_t features_nbytes(const struct hog_context *self) {
+static size_t features_nbytes(const struct HOGContext *self) {
     return sizeof(float)*features_nelem(self);
 }
 
-static size_t grad_nbytes(const struct hog_context *self) {
+static size_t grad_nbytes(const struct HOGContext *self) {
     return sizeof(float)*self->w*self->h;
 }
 
-static struct workspace* workspace_init(const struct hog_context *self) {
+static struct workspace* workspace_init(const struct HOGContext *self) {
     const int w=self->w,h=self->h;
     struct workspace* ws=malloc(sizeof(struct workspace));
     float k[3]={-1,0,1},*ks[]={k,k};
@@ -47,12 +47,12 @@ static struct workspace* workspace_init(const struct hog_context *self) {
     return ws;
 }
 
-struct hog_context hog_init(
+struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct hog_parameters params,
+    const struct HOGParameters params,
     int w,int h)
 {
-    struct hog_context self={
+    struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
@@ -61,7 +61,7 @@ struct hog_context hog_init(
     return self;
 }
 
-void hog_teardown(struct hog_context *self) {
+void HOGTeardown(struct HOGContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     SeparableConvolutionTeardown(&ws->dx);
     SeparableConvolutionTeardown(&ws->dy);
@@ -70,7 +70,7 @@ void hog_teardown(struct hog_context *self) {
 }
 
 
-void hog(struct hog_context *self,const struct hog_image image) {
+void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients
@@ -80,34 +80,34 @@ void hog(struct hog_context *self,const struct hog_image image) {
 }
 
 
-size_t hog_features_nbytes(const struct hog_context *self) {
+size_t HOGOutputByteCount(const struct HOGContext *self) {
     return features_nbytes(self);
 }
 
-void hog_features_copy(const struct hog_context *self,void *buf,size_t nbytes) {
+void HOGOutputCopy(const struct HOGContext *self,void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;
     GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
 }
 
 
-void hog_features_strides(const struct hog_context *self,struct hog_feature_dims *strides) {
+void HOGOutputStrides(const struct HOGContext *self,struct HOGFeatureDims *strides) {
     struct workspace *ws=(struct workspace*)self->workspace;
     unsigned sh[3],st[4];
     GradientHistogramOutputShape(&ws->gh,sh,st);
 
-    *strides=(struct hog_feature_dims) {
+    *strides=(struct HOGFeatureDims) {
         .bin=st[2],
         .x=st[0],
         .y=st[1],
     };
 }
 
-void hog_features_shape(const struct hog_context *self,struct hog_feature_dims *shape) {
+void HOGOutputShape(const struct HOGContext *self,struct HOGFeatureDims *shape) {
     struct workspace *ws=(struct workspace*)self->workspace;
     unsigned sh[3],st[4];
     GradientHistogramOutputShape(&ws->gh,sh,st);
 
-    *shape=(struct hog_feature_dims) {
+    *shape=(struct HOGFeatureDims) {
         .x=sh[0],
         .y=sh[1],
         .bin=sh[2]

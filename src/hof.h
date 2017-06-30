@@ -36,7 +36,7 @@ struct HOFContext {
     void *workspace;
 };
 
-struct HOFContext hof_init(
+struct HOFContext HOFInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOFParameters params);
 
@@ -48,7 +48,7 @@ void HOFCompute(
     enum HOFScalarType type);
 
 /** @Returns the number of bytes required for the output buffer
- *  @see hog_features_copy()
+ *  @see HOGOutputCopy()
  */
 size_t HOFOutputByteCount(const struct HOFContext *context);
 void  HOFOutputCopy(const struct HOFContext *context, void *buf,size_t nbytes);
@@ -60,12 +60,12 @@ void  HOFOutputCopy(const struct HOFContext *context, void *buf,size_t nbytes);
 *
 * The index of the value at r=(x,y,bin) is given by dot(r,hof_strides).
 */
-void HOFOutputStrides(const struct HOFContext *context,struct hog_feature_dims *strides);
+void HOFOutputStrides(const struct HOFContext *context,struct HOGFeatureDims *strides);
 
 /**
 * `shape` describes the dimensions of the 3d array of computed features.
 */
-void HOFOutputShape(const struct HOFContext *context,struct hog_feature_dims *shape);
+void HOFOutputShape(const struct HOFContext *context,struct HOGFeatureDims *shape);
 
 
 #ifdef __cplusplus

@@ -77,7 +77,7 @@ static void transpose2d(float *out,const float* in,unsigned w,unsigned h) {
     }
 }
 
-struct HOFContext hof_init(
+struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOFParameters params)
 {
@@ -144,18 +144,18 @@ void HOFOutputCopy(const struct HOFContext *self, void *buf,size_t nbytes) {
     Error:;
 }
 
-void HOFOutputStrides(const struct HOFContext *self,struct hog_feature_dims *strides) {
-    struct hog_feature_dims shape;
+void HOFOutputStrides(const struct HOFContext *self,struct HOGFeatureDims *strides) {
+    struct HOGFeatureDims shape;
     HOFOutputShape(self,&shape);
-    *strides=(struct hog_feature_dims) {
+    *strides=(struct HOGFeatureDims) {
         .x=1,
         .y=shape.x,
         .bin=shape.x*shape.y
     };
 }
 
-void HOFOutputShape(const struct HOFContext *self,struct hog_feature_dims *shape) {
-    *shape=(struct hog_feature_dims) {
+void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) {
+    *shape=(struct HOGFeatureDims) {
         .x=self->params.input.w/self->params.cell.w,
         .y=self->params.input.h/self->params.cell.h,
         .bin=self->params.nbins

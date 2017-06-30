@@ -167,10 +167,10 @@ static void autocontrast(const float *out,int n) {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
-    struct hog_parameters params={.cell={16,16},.nbins=8};
-    struct hog_context ctx=
-        hog_init(logger,params,W,H);
-    float* out=malloc(hog_features_nbytes(&ctx));
+    struct HOGParameters params={.cell={16,16},.nbins=8};
+    struct HOGContext ctx=
+        HOGInitialize(logger,params,W,H);
+    float* out=malloc(HOGOutputByteCount(&ctx));
 
     hogshow_set_attr(params.cell.w*0.1,params.cell.w,params.cell.h);
 
@@ -179,7 +179,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;
 
-    struct hog_image him={
+    struct HOGImage him={
         .type=hog_u8,
         .w=W,.h=H,.pitch=W,
         .buf=0
@@ -188,13 +188,13 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     while(app_is_running()) {
         him.buf=disk(app_uptime_s()/10.0);
         clock=tic();
-        hog(&ctx,him);
+        HOGCompute(&ctx,him);
         acc+=(float)toc(&clock);
         
-        hog_features_copy(&ctx,out,hog_features_nbytes(&ctx));
-        struct hog_feature_dims shape,strides;
-        hog_features_shape(&ctx,&shape);
-        hog_features_strides(&ctx,&strides);
+        HOGOutputCopy(&ctx,out,HOGOutputByteCount(&ctx));
+        struct HOGFeatureDims shape,strides;
+        HOGOutputShape(&ctx,&shape);
+        HOGOutputStrides(&ctx,&strides);
 
 #if 0
         autocontrast(out,shape.x*shape.y);
@@ -206,7 +206,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 
         ++nframes;
     }
-    hog_teardown(&ctx);
+    HOGTeardown(&ctx);
     LOG("nframes: %f\n",nframes);
     LOG("Mean HoG time: %f us\n",1e6*acc/(float)nframes);
     LOG("Mean HoG throughput: %f Mpx/s\n",1e-6*nframes*ctx.w*ctx.h/acc);

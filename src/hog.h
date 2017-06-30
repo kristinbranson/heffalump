@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-enum hog_scalar_type {
+enum HOGScalarType {
     hog_u8,
     hog_u16,
     hog_u32,
@@ -22,48 +22,48 @@ enum hog_scalar_type {
     hog_f64,
 };
 
-struct hog_image {
+struct HOGImage {
     void *buf;
-    enum hog_scalar_type type;
+    enum HOGScalarType type;
     int w;
     int h;
     int pitch;
 };
 
-struct hog_parameters {
+struct HOGParameters {
     struct {
         int w,h;
     } cell;
     int nbins;
 };
 
-struct hog_feature_dims {
+struct HOGFeatureDims {
     uint64_t x,y,bin;
 };
 
-struct hog_context {
+struct HOGContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     int w,h;
-    struct hog_parameters params;
+    struct HOGParameters params;
     void *workspace;
 };
 
-struct hog_context hog_init(
+struct HOGContext HOGInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
-    const struct hog_parameters params, 
+    const struct HOGParameters params, 
     int w, int h);
 
-void hog_teardown(struct hog_context *context);
+void HOGTeardown(struct HOGContext *context);
 
-void hog(
-    struct hog_context     *context,
-    const struct hog_image  image);
+void HOGCompute(
+    struct HOGContext     *context,
+    const struct HOGImage  image);
 
 /** @Returns the number of bytes required for the output buffer
- *  @see hog_features_copy()
+ *  @see HOGOutputCopy()
  */
-size_t hog_features_nbytes(const struct hog_context *context);
-void  hog_features_copy(const struct hog_context *context, void *buf,size_t nbytes);
+size_t HOGOutputByteCount(const struct HOGContext *context);
+void   HOGOutputCopy(const struct HOGContext *context, void *buf,size_t nbytes);
 
 
 /**
@@ -72,12 +72,12 @@ void  hog_features_copy(const struct hog_context *context, void *buf,size_t nbyt
  *
  * The index of the value at r=(x,y,bin) is given by dot(r,hog_strides).
  */
-void hog_features_strides(const struct hog_context *context,struct hog_feature_dims *strides);
+void HOGOutputStrides(const struct HOGContext *context,struct HOGFeatureDims *strides);
 
 /**
  * @param `shape` describes the dimensions of the 3d array of computed features.
  */
-void hog_features_shape(const struct hog_context *context,struct hog_feature_dims *shape);
+void HOGOutputShape(const struct HOGContext *context,struct HOGFeatureDims *shape);
 
 
 #ifdef __cplusplus

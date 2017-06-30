@@ -21,25 +21,25 @@ struct workspace {
 };
 
 
-static size_t features_nelem(const struct hog_context *self) {
+static size_t features_nelem(const struct HOGContext *self) {
     int ncell=(self->w/self->params.cell.w)*(self->h/self->params.cell.h);
     return ncell*self->params.nbins;
 }
 
-static size_t features_nbytes(const struct hog_context *self) {
+static size_t features_nbytes(const struct HOGContext *self) {
     return sizeof(float)*features_nelem(self);
 }
 
-static size_t grad_nbytes(const struct hog_context *self) {
+static size_t grad_nbytes(const struct HOGContext *self) {
     return sizeof(float)*self->w*self->h;
 }
 
 
-static size_t workspace_nbytes(const struct hog_context *self) {
+static size_t workspace_nbytes(const struct HOGContext *self) {
     return sizeof(struct workspace)+features_nbytes(self);
 }
 
-static struct workspace* workspace_init(const struct hog_context *self) {
+static struct workspace* workspace_init(const struct HOGContext *self) {
     const int w=self->w,h=self->h;
     struct workspace* ws=malloc(workspace_nbytes(self));
     float k[3]={-1,0,1},*ks[]={k,k};
@@ -64,12 +64,12 @@ static void polar_ip(float *x,float *y,size_t n) {
     }
 }
 
-struct hog_context hog_init(
+struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct hog_parameters params,
+    const struct HOGParameters params,
     int w,int h)
 {
-    struct hog_context self={
+    struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
@@ -79,7 +79,7 @@ struct hog_context hog_init(
 }
 
 
-void hog_teardown(struct hog_context *self) {
+void HOGTeardown(struct HOGContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     SeparableConvolutionTeardown(&ws->dx);
     SeparableConvolutionTeardown(&ws->dy);
@@ -87,7 +87,7 @@ void hog_teardown(struct hog_context *self) {
 }
 
 
-void hog(struct hog_context *self,const struct hog_image image) {
+void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients and convert to polar
@@ -110,11 +110,11 @@ void hog(struct hog_context *self,const struct hog_image image) {
 Error:;
 }
 
-size_t hog_features_nbytes(const struct hog_context *self) {
+size_t HOGOutputByteCount(const struct HOGContext *self) {
     return features_nbytes(self);
 }
 
-void hog_features_copy(const struct hog_context *self, void *buf,size_t nbytes) {
+void HOGOutputCopy(const struct HOGContext *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
     CHECK(nbytes<=features_nbytes(self));
     memcpy(buf,ws->features,features_nbytes(self));
@@ -122,18 +122,18 @@ Error:;
 }
 
 
-void hog_features_strides(const struct hog_context *self,struct hog_feature_dims *strides) {
-    struct hog_feature_dims shape;
-    hog_features_shape(self,&shape);
-    *strides=(struct hog_feature_dims) {
+void HOGOutputStrides(const struct HOGContext *self,struct HOGFeatureDims *strides) {
+    struct HOGFeatureDims shape;
+    HOGOutputShape(self,&shape);
+    *strides=(struct HOGFeatureDims) {
         .x=1,
         .y=shape.x,
         .bin=shape.x*shape.y
     };
 }
 
-void hog_features_shape(const struct hog_context *self,struct hog_feature_dims *shape) {
-    *shape=(struct hog_feature_dims) {
+void HOGOutputShape(const struct HOGContext *self,struct HOGFeatureDims *shape) {
+    *shape=(struct HOGFeatureDims) {
         .x=self->w/self->params.cell.w,
         .y=self->h/self->params.cell.h,
         .bin=self->params.nbins

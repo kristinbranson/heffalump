@@ -10,7 +10,7 @@ extern "C" {
 
 void hogshow_set_attr(float scale, float cellw, float cellh);
 
-void hogshow(float x, float y, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const void *data);
+void hogshow(float x, float y, const struct HOGFeatureDims *shape, const struct HOGFeatureDims *strides, const void *data);
 
 #ifdef __cplusplus
 }

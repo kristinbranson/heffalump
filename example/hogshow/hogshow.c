@@ -32,7 +32,7 @@ struct hogview_attr {
 static struct commands {
     unsigned flags;
     struct show {
-        struct hog_feature_dims shape,strides;
+        struct HOGFeatureDims shape,strides;
         float x,y;
         const void *data;
     } show;
@@ -130,7 +130,7 @@ static void maybe_resize_verts(int nbins, int ncellw, int ncellh) {
 // (v2 v3) is first tri, (v4 v5) is second etc.
 // (v3,v4) is a "transition triangle"
 // Gives 2+nbin verts per cell.
-static void compute_verts(float x0,float y0, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const float *hogdata) {
+static void compute_verts(float x0,float y0, const struct HOGFeatureDims *shape, const struct HOGFeatureDims *strides, const float *hogdata) {
     // maybe_resize_verts will ensure memory is init'd correctly regardless of app state.
     const struct context *self=&CTX; 
     maybe_resize_verts((int)shape->bin,(int)shape->x,(int)shape->y);
@@ -226,7 +226,7 @@ void hogshow_set_attr(float scale, float cellw, float cellh) {
     CTX.attr.cellw=cellw;
 }
 
-void hogshow(float x, float y, const struct hog_feature_dims *shape, const struct hog_feature_dims *strides, const void *data) {
+void hogshow(float x, float y, const struct HOGFeatureDims *shape, const struct HOGFeatureDims *strides, const void *data) {
     if(app_is_running()&&!CTX.layer.added) {
         // Fill in the required callbacks:
         // This has to happen outside of the init() function
