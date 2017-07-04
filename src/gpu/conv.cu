@@ -368,7 +368,7 @@ extern "C" float conv_last_elapsed_ms(const struct SeparableConvolutionContext* 
     return ws->last_elapsed_ms;
 }
 
-struct SeparableConvolutionContext conv_init(
+struct SeparableConvolutionContext SeparableConvolutionInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,

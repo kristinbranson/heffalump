@@ -1,3 +1,5 @@
+#define _CRTDBG_MAPALLOC
+#include <crtdbg.h>
 #include "../lk.h"
 #include <stdlib.h>
 #include <math.h>
@@ -98,7 +100,7 @@ static struct workspace* workspace_create(
     {
         float *ks[]={self->kernels.smoothing,self->kernels.smoothing};
         unsigned nks[]={self->kernels.nsmooth,self->kernels.nsmooth};
-        self->smooth=conv_init(logger,w,h,w,ks,nks);
+        self->smooth=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
     }
     {
 #if 0
@@ -111,8 +113,8 @@ static struct workspace* workspace_create(
         unsigned nks0[]={self->kernels.nder,0};
         unsigned nks1[]={0,self->kernels.nder};
 #endif
-        self->dx=conv_init(logger,w,h,w,ks,nks0);
-        self->dy=conv_init(logger,w,h,w,ks,nks1);
+        self->dx=SeparableConvolutionInitialize(logger,w,h,w,ks,nks0);
+        self->dy=SeparableConvolutionInitialize(logger,w,h,w,ks,nks1);
         self->dI.x=self->dx.out;
         self->dI.y=self->dy.out;
     }

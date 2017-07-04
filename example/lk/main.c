@@ -61,7 +61,7 @@ static void* disk(float time) {
     static float *ks[]={k,k};
     static unsigned nks[]={1,1};
     if(!out) {
-        ctx=conv_init(logger,256,256,256,ks,nks);        
+        ctx=SeparableConvolutionInitialize(logger,256,256,256,ks,nks);        
         out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     }
 

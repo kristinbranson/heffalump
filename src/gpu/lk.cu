@@ -166,8 +166,8 @@ namespace gpu {
                 const float *ks[]={kernels.derivative,kernels.derivative};
                 unsigned nks0[]={kernels.nder,0};
                 unsigned nks1[]={0,kernels.nder};
-                stage1.dx=conv_init(logger,w,h,p,ks,nks0);
-                stage1.dy=conv_init(logger,w,h,p,ks,nks1);
+                stage1.dx=SeparableConvolutionInitialize(logger,w,h,p,ks,nks0);
+                stage1.dy=SeparableConvolutionInitialize(logger,w,h,p,ks,nks1);
             }
             CUTRY(logger,cudaMalloc(&stage1.dt,bytesof_intermediate()));
 
@@ -180,11 +180,11 @@ namespace gpu {
             {
                 const float *ks[]={kernels.smoothing,kernels.smoothing};
                 unsigned nks[]={kernels.nsmooth,kernels.nsmooth};
-                stage3.xx=conv_init(logger,w,h,w,ks,nks);
-                stage3.yy=conv_init(logger,w,h,w,ks,nks);
-                stage3.xy=conv_init(logger,w,h,w,ks,nks);
-                stage3.xt=conv_init(logger,w,h,w,ks,nks);
-                stage3.yt=conv_init(logger,w,h,w,ks,nks);
+                stage3.xx=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
+                stage3.yy=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
+                stage3.xy=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
+                stage3.xt=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
+                stage3.yt=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
             }
 
             mdx.with_lower_bound(0.0f);

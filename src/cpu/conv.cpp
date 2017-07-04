@@ -1,3 +1,10 @@
+#define _CRTDBG_MAPALLOC
+#include <crtdbg.h>
+#ifdef _DEBUG
+#define DEBUG_NEW new(_NORMAL_BLOCK, __FILE__, __LINE__)
+#define new DEBUG_NEW
+#endif
+
 #include "../conv.h"
 #include <cstring>
 #include <cstdlib>
@@ -223,7 +230,7 @@ namespace cpu {
     };
 }}} // end priv::conv::cpu
 
-struct SeparableConvolutionContext conv_init(
+struct SeparableConvolutionContext SeparableConvolutionInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
@@ -247,9 +254,11 @@ struct SeparableConvolutionContext conv_init(
 }
 
 void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {     
+	using namespace priv::conv::cpu;
     try {
         delete [] self->out;
-        delete self->workspace;
+		auto ws=static_cast<workspace*>(self->workspace);
+        delete ws;
     }catch(...) {
         if(self && self->logger)
             ERR(self->logger,"CONV: Problem in releasing working storage.");

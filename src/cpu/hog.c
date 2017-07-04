@@ -44,8 +44,8 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     struct workspace* ws=malloc(workspace_nbytes(self));
     float k[3]={-1,0,1},*ks[]={k,k};
     unsigned nkx[]={3,0},nky[]={0,3};
-    ws->dx=conv_init(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
-    ws->dy=conv_init(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
+    ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
+    ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     ws->M=ws->dx.out;
     ws->O=ws->dy.out;
     return ws;

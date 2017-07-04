@@ -68,7 +68,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         gaussian_derivative(&buf[50],nks[1],3.0f),
     };
     
-    struct SeparableConvolutionContext ctx=conv_init(logger,W,H,W,ks,nks);
+    struct SeparableConvolutionContext ctx=SeparableConvolutionInitialize(logger,W,H,W,ks,nks);
     float* out=malloc(SeparableConvolutionOutputByteCount(&ctx));
     TicTocTimer clock;
     float acc=0.0f,nframes=0.0f;

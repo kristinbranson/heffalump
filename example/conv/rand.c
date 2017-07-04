@@ -85,7 +85,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
         gaussian_derivative(&buf[25],nks[1],3.0f),
     };
     
-    struct SeparableConvolutionContext ctx=conv_init(logger,256,256,256,ks,nks);
+    struct SeparableConvolutionContext ctx=SeparableConvolutionInitialize(logger,256,256,256,ks,nks);
     size_t nbytes=SeparableConvolutionOutputByteCount(&ctx);
     float* out=malloc(nbytes);
     app_init(logger);

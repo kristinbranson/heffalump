@@ -42,7 +42,7 @@ struct SeparableConvolutionContext {
     The `pitch` is the number of elements (pixels) spanned by one line of the image.
     The `w` and `h` specify the rectangle over which the computation will be performed.
 */
-struct SeparableConvolutionContext conv_init(
+struct SeparableConvolutionContext SeparableConvolutionInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,
