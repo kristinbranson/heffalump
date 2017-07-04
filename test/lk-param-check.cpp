@@ -35,6 +35,7 @@ static vector<testparams> types = {
 
 static vector<testparams> make_tests() {
 	vector<testparams> tests;
+#if 1
     for(const auto& size:sizes)
         for(const auto& type:types) {
             // combine elements from each set
@@ -42,6 +43,10 @@ static vector<testparams> make_tests() {
             p.type=type.type;
             tests.push_back(p);
         }
+#else
+	testparams p={12,77,1,3,lk_u8};
+	tests.push_back(p);
+#endif
 	return tests;
 }
 
@@ -109,23 +114,35 @@ string test_desc(const testparams& test) {
 }
 
 int main() {
+	LOG("Init/Teardown");
     for(const auto& test:make_tests()) {
-        LOG("TEST: %s",test_desc(test).c_str());
+        LOG("\tTEST: %s",test_desc(test).c_str());
         auto p=make_params(test);
         auto lk=LucasKanedeInitialize(logger,test.w,test.h,test.w,make_params());
-        switch(test.type) {
-            #define CASE(T) case lk_##T: LucasKanade(&lk,make_image<T>(test.w,test.h),test.type); break
-            // #define CASE(T) case lk_##T: ecode=1; break
-            CASE(u8); CASE(u16); CASE(u32); CASE(u64);
-            CASE(i8); CASE(i16); CASE(i32); CASE(i64);
-            CASE(f32); CASE(f64);
-            #undef CASE
-        }        
         LucasKanadeTeardown(&lk);
         if(ecode) {
-            LOG("FAIL: %s",test_desc(test).c_str());
+            LOG("\tFAIL: %s",test_desc(test).c_str());
             exit(ecode);
         }
     }
+	LOG("With compute");
+	for(const auto& test:make_tests()) {
+		LOG("\tTEST: %s",test_desc(test).c_str());
+		auto p=make_params(test);
+		auto lk=LucasKanedeInitialize(logger,test.w,test.h,test.w,make_params());
+		switch(test.type) {
+		    #define CASE(T) case lk_##T: LucasKanade(&lk,make_image<T>(test.w,test.h),test.type); break
+		    // #define CASE(T) case lk_##T: ecode=1; break
+		    CASE(u8); CASE(u16); CASE(u32); CASE(u64);
+		    CASE(i8); CASE(i16); CASE(i32); CASE(i64);
+		    CASE(f32); CASE(f64);
+		    #undef CASE
+		}        
+		LucasKanadeTeardown(&lk);
+		if(ecode) {
+			LOG("\tFAIL: %s",test_desc(test).c_str());
+			exit(ecode);
+		}
+	}
     return ecode;
 }

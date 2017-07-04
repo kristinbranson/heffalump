@@ -48,7 +48,7 @@ namespace cpu {
         const idx shift=nk/2;
         // handle boundary condition out of main loop
         // clamp to boundary
-        for(j=0;j<shift;++j) {
+        for(j=0;j<shift && j<n;++j) {
             auto acc=0.0f;
             idx i;
             auto edge=float(in[0]);
@@ -71,7 +71,7 @@ namespace cpu {
 
         // main in-bounds loop
         // last j and i, want: j+i-shift=n-1 => j+(nk-1)-shift=n-1 => j=n-1-nk+1+shift=n-nk+shift => (j+nk)=(n+shift)
-        for(;(j+nk)<=(n+shift);++j) { // if n<nk, the loo will be skipped
+        for(;(j+nk)<=(n+shift) && j<n;++j) { // if n<nk, the loo will be skipped
             auto acc=0.0f;
             for(idx i=0;i<nk;++i) 
                 acc+=k[i]*float(in[j+i-shift]); 
@@ -105,7 +105,7 @@ namespace cpu {
         const idx shift=nk/2;
         // handle boundary condition out of main loop
         // clamp to boundary
-        for(j=0;j<shift;++j) {
+        for(j=0;j<shift && j<n;++j) {
             auto acc=0.0f;
             idx i;
             auto edge=float(in[0]);
@@ -122,7 +122,7 @@ namespace cpu {
 
         // main in-bounds loop
         // last j and i, want: j+i-shift=n-1 => j+(nk-1)-shift=n-1 => j=n-1-nk+1+shift=n-nk+shift => (j+nk)=(n+shift)
-        for(;(j+nk)<=(n+shift);++j) { // if n<nk, the loop will be skipped
+        for(;(j+nk)<=(n+shift)&&j<n;++j) { // if n<nk, the loop will be skipped
             auto acc=0.0f;
             for(idx i=0;i<nk;++i)
                 acc+=k[i]*float(in[(j+i-shift)*pin]);
@@ -174,8 +174,8 @@ namespace cpu {
         auto * const out=self->out;        
         const pitch_t p[2]={self->pitch,1};
         const sz_t s[2]={self->h,self->w};
-        auto d=0;
-        if(ws->nkernel[d]==0) {
+        auto d=0;        
+		if(ws->nkernel[d]==0) {
             // nothing to do, may need to convert to float
             for(sz_t i=0;i<s[d];++i)
                 copy1d_unit_stride(out+i*p[d],in+i*p[d],s[(d+1)%2]);
@@ -246,7 +246,7 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
     self.pitch=pitch;
     try {
         self.out=new float[w*h];
-        self.workspace=new workspace(kernel,nkernel,w);
+        self.workspace=new workspace(kernel,nkernel,w>h?w:h);
     } catch(...) {
         ERR(logger,"CONV: Problem allocating working storage.");
     }

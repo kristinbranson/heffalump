@@ -5,6 +5,7 @@ foreach(arch
     foreach(label
         memcheck
         lk-param-check
+        conv-param-check
     )
         set(tgt ${label}-${arch})
         add_executable(${tgt} ${label}.cpp)
