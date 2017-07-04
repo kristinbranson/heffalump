@@ -5,10 +5,9 @@
 #include <stdint.h>
 #include "gpu/gradientHist.h"
 
-#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define ERR(...) self->logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+#define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 extern void gradHist(
     float *M,float *O,float *H,int h,int w,
@@ -69,21 +68,27 @@ struct HOGContext HOGInitialize(
     const struct HOGParameters params,
     int w,int h)
 {
-    struct HOGContext self={
-        .logger=logger,
-        .params=params,
-        .w=w,.h=h,
-        .workspace=workspace_init(&self)
-    };
-    return self;
+	struct HOGContext self={
+		.logger=logger,
+		.params=params,
+		.w=w,.h=h,
+		.workspace=0
+	};
+	CHECK(logger,params.cell.w>0);
+	CHECK(logger,params.cell.h>0);
+	self.workspace=workspace_init(&self);
+Error:;
+	return self;
 }
 
 
 void HOGTeardown(struct HOGContext *self) {
-    struct workspace* ws=(struct workspace*)self->workspace;
-    SeparableConvolutionTeardown(&ws->dx);
-    SeparableConvolutionTeardown(&ws->dy);
-    free(self->workspace);
+	if(self->workspace) {
+		struct workspace* ws=(struct workspace*)self->workspace;
+		SeparableConvolutionTeardown(&ws->dx);
+		SeparableConvolutionTeardown(&ws->dy);
+		free(self->workspace);
+	}
 }
 
 
@@ -101,7 +106,7 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     const int use_soft_bin=1;
          
     if(self->params.cell.w!=self->params.cell.h) {
-        ERR("gradHist only allows for square cells");
+        ERR(self->logger,"gradHist only allows for square cells");
         goto Error;
     }
     memset(ws->features,0,features_nbytes(self));
@@ -116,7 +121,7 @@ size_t HOGOutputByteCount(const struct HOGContext *self) {
 
 void HOGOutputCopy(const struct HOGContext *self, void *buf,size_t nbytes) {
     struct workspace *ws=(struct workspace*)self->workspace;    
-    CHECK(nbytes<=features_nbytes(self));
+    CHECK(self->logger,nbytes<=features_nbytes(self));
     memcpy(buf,ws->features,features_nbytes(self));
 Error:;
 }
