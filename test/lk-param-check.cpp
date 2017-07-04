@@ -18,7 +18,7 @@ static vector<testparams> sizes = {
     {320,   240,    1.0f,    3.0f,    lk_u8},
     {12,    77,     1.0f,    3.0f,    lk_u8},
     {1,     1,      1.0f,    3.0f,    lk_u8},
-    {1829,  1345,   1.0f,    3.0f,    lk_u8},
+    {1345,  1829,   1.0f,    3.0f,    lk_u8},
 };
 static vector<testparams> types = {
     {0,     0,      1.0f,    3.0f,    lk_u8},
