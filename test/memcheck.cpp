@@ -90,7 +90,7 @@ int main() {
 
 	LOG("LK");    	
 	REPORT_ALLOCATION_SIZE(
-		auto lk=LucasKanedeInitialize(logger,w,h,w,lkparams);    		
+		auto lk=LucasKanadeInitialize(logger,w,h,w,lkparams);    		
 	);
 	LucasKanadeTeardown(&lk);		
 	if(_CrtDumpMemoryLeaks())

@@ -125,10 +125,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
 //    cudaSetDevice(1);
 
     struct LucasKanadeContext ctx[4]={
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params)
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params)
     };
 
 

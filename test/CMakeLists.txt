@@ -7,6 +7,7 @@ foreach(arch
         conv-param-check
         lk-param-check
         hog-param-check
+        hof-param-check
     )
         set(tgt ${label}-${arch})
         add_executable(${tgt} ${label}.cpp)

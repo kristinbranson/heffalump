@@ -440,7 +440,7 @@ namespace gpu {
 
 using priv::lk::gpu::workspace;
 
-extern "C" struct LucasKanadeContext LucasKanedeInitialize(
+extern "C" struct LucasKanadeContext LucasKanadeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,

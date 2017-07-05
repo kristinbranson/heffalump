@@ -21,8 +21,11 @@ struct workspace {
 
 
 static size_t features_nelem(const struct HOGContext *self) {
-    int ncell=(self->w/self->params.cell.w)*(self->h/self->params.cell.h);
-    return ncell*self->params.nbins;
+    if(self->params.cell.w && self->params.cell.h) {
+        int ncell=(self->w/self->params.cell.w)*(self->h/self->params.cell.h);
+        return ncell*self->params.nbins;
+    }
+    return 0;
 }
 
 static size_t features_nbytes(const struct HOGContext *self) {
@@ -43,11 +46,14 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     struct workspace* ws=malloc(workspace_nbytes(self));
     float k[3]={-1,0,1},*ks[]={k,k};
     unsigned nkx[]={3,0},nky[]={0,3};
+    CHECK(self->logger,features_nelem(self)>0);
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     ws->M=ws->dx.out;
     ws->O=ws->dy.out;
     return ws;
+Error:
+    return 0;
 }
 
 #include <math.h>
@@ -76,7 +82,7 @@ struct HOGContext HOGInitialize(
 	};
 	CHECK(logger,params.cell.w>0);
 	CHECK(logger,params.cell.h>0);
-	self.workspace=workspace_init(&self);
+	CHECK(logger,self.workspace=workspace_init(&self));
 Error:;
 	return self;
 }
@@ -93,6 +99,7 @@ void HOGTeardown(struct HOGContext *self) {
 
 
 void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
+    CHECK(self->logger,self->workspace);
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients and convert to polar
@@ -115,13 +122,14 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
 Error:;
 }
 
-size_t HOGOutputByteCount(const struct HOGContext *self) {
+size_t HOGOutputByteCount(const struct HOGContext *self) {    
     return features_nbytes(self);
 }
 
 void HOGOutputCopy(const struct HOGContext *self, void *buf,size_t nbytes) {
+    CHECK(self->logger,self->workspace);
     struct workspace *ws=(struct workspace*)self->workspace;    
-    CHECK(self->logger,nbytes<=features_nbytes(self));
+    CHECK(self->logger,nbytes>=features_nbytes(self));
     memcpy(buf,ws->features,features_nbytes(self));
 Error:;
 }
@@ -138,9 +146,12 @@ void HOGOutputStrides(const struct HOGContext *self,struct HOGFeatureDims *strid
 }
 
 void HOGOutputShape(const struct HOGContext *self,struct HOGFeatureDims *shape) {
-    *shape=(struct HOGFeatureDims) {
-        .x=self->w/self->params.cell.w,
-        .y=self->h/self->params.cell.h,
-        .bin=self->params.nbins
-    };
+    if(self->params.cell.w && self->params.cell.h) {
+        *shape=(struct HOGFeatureDims) {
+            .x=self->w/self->params.cell.w,
+                .y=self->h/self->params.cell.h,
+                .bin=self->params.nbins
+        };
+    }
+    *shape=(struct HOGFeatureDims) { 0,0,0 };
 }

@@ -31,7 +31,7 @@ namespace gpu {
             ghparams.nbins=params.nbins;
 
             GradientHistogramInit(&gh,&ghparams,logger);
-            lk_=LucasKanedeInitialize(logger,
+            lk_=LucasKanadeInitialize(logger,
                 params.input.w,params.input.h,params.input.pitch,params.lk);
             GradientHistogramWithStream(&gh,LucasKanadeOutputStream(&lk_));
         }

@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <hog.h>
+#include <hof.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -12,41 +13,41 @@ using namespace std;
 #define countof(e) (sizeof(e)/sizeof((e)[0]))
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
-struct testparams {int w,h,cw,ch,nbins; HOGScalarType type;};
+struct testparams {int w,h,cw,ch,nbins; HOFScalarType type;};
 // Tests will be constructed from combinations of these various sets
 static vector<testparams> sizes = {
-    {0,     0,      0,    0,    0,    hog_u8},
-    {320,   240,    0,    0,    0,    hog_u8},
-    {12,    77,     0,    0,    0,    hog_u8},
-    {1,     1,      0,    0,    0,    hog_u8},
-    {1345,  1829,   0,    0,    0,    hog_u8},
+    {0,     0,      0,    0,    0,    hof_u8},
+    {320,   240,    0,    0,    0,    hof_u8},
+    {12,    77,     0,    0,    0,    hof_u8},
+    {1,     1,      0,    0,    0,    hof_u8},
+    {1345,  1829,   0,    0,    0,    hof_u8},
 };
 static vector<testparams> cell_sizes = {
-    {0,     0,      0,    0,    0,    hog_u8},
-    {0,     0,      1,    1,    0,    hog_u8},
-    {0,     0,      40,   40,   0,    hog_u8},    
-    {0,     0,      17,   17,   0,    hog_u8},
+    {0,     0,      0,    0,    0,    hof_u8},
+    {0,     0,      1,    1,    0,    hof_u8},
+    {0,     0,      40,   40,   0,    hof_u8},    
+    {0,     0,      17,   17,   0,    hof_u8},
 
-    //{0,     0,      17,   40,   0,    hog_u8}, // TODO: pdollar gradHist only does square cells so no requirement here.
-    //{0,     0,      40,   17,   0,    hog_u8}, //       gpu impl does allow this, but not testing here.
+    //{0,     0,      17,   40,   0,    hof_u8}, // TODO: pdollar gradHist only does square cells so no requirement here.
+    //{0,     0,      40,   17,   0,    hof_u8}, //       gpu impl does allow this, but not testing here.
 };
 static vector<testparams> bin_sizes = {
-    {0,     0,      0,    0,    0,    hog_u8},
-    {0,     0,      0,    0,    1,    hog_u8},
-    {0,     0,      0,    0,    8,    hog_u8},
-    {0,     0,      0,    0,    16,   hog_u8},
+    {0,     0,      0,    0,    0,    hof_u8},
+    {0,     0,      0,    0,    1,    hof_u8},
+    {0,     0,      0,    0,    8,    hof_u8},
+    {0,     0,      0,    0,    16,   hof_u8},
 };
 static vector<testparams> types = {
-    {0,     0,      0,    0,    0,    hog_u8},
-    {0,     0,      0,    0,    0,    hog_u16},
-    {0,     0,      0,    0,    0,    hog_u32},
-    {0,     0,      0,    0,    0,    hog_u64},
-    {0,     0,      0,    0,    0,    hog_i8},
-    {0,     0,      0,    0,    0,    hog_i16},
-    {0,     0,      0,    0,    0,    hog_i32},
-    {0,     0,      0,    0,    0,    hog_i64},    
-    {0,     0,      0,    0,    0,    hog_f32},
-    {0,     0,      0,    0,    0,    hog_f64},
+    {0,     0,      0,    0,    0,    hof_u8},
+    {0,     0,      0,    0,    0,    hof_u16},
+    {0,     0,      0,    0,    0,    hof_u32},
+    {0,     0,      0,    0,    0,    hof_u64},
+    {0,     0,      0,    0,    0,    hof_i8},
+    {0,     0,      0,    0,    0,    hof_i16},
+    {0,     0,      0,    0,    0,    hof_i32},
+    {0,     0,      0,    0,    0,    hof_i64},    
+    {0,     0,      0,    0,    0,    hof_f32},
+    {0,     0,      0,    0,    0,    hof_f64},
 };
 
 // encode rules for expected parameter validation 
@@ -75,7 +76,7 @@ static vector<testparams> make_tests() {
         tests.push_back(p);
     }
 #else
-	testparams p={320,240,1,1,1,hog_f64};
+	testparams p={320,240,1,1,1,hof_f64};
 	tests.push_back(p);
 #endif
 	return tests;
@@ -99,8 +100,13 @@ static void logger(int is_error,const char *file,int line,const char* function,c
         ecode=1;
 }
 
-static struct HOGParameters make_params(const testparams& t) {
-    return {{t.cw,t.ch},t.nbins};
+static struct HOFParameters make_params(const testparams& t) {    
+    return {
+        {{1.0f,3.0f}}, // lk params
+        {t.cw,t.ch},   // cell size
+        {t.w,t.h,t.w}, // input image size
+        t.nbins
+    };
 }
 
 template<typename T> T* make_image(int w,int h) {
@@ -124,9 +130,9 @@ using i64= int64_t;
 using f32= float;
 using f64= double;
 
-string type_name(enum HOGScalarType type) {
+string type_name(enum HOFScalarType type) {
     switch(type) {
-        #define CASE(T) case hog_##T: return string(#T)
+        #define CASE(T) case hof_##T: return string(#T)
         CASE(u8); CASE(u16); CASE(u32); CASE(u64);
         CASE(i8); CASE(i16); CASE(i32); CASE(i64);
         CASE(f32); CASE(f64);
@@ -160,55 +166,55 @@ void run_test(const char* name, function<void(const testparams& test)> eval) {
 int main() {
     run_test("Init/Teardown",[](const testparams& test){
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
-        HOGTeardown(&ctx);
+        auto ctx=HOFInitialize(logger,p);
+        HOFTeardown(&ctx);
     });
     run_test("Compute",[](const testparams& test) {
-        HOGImage im{nullptr,test.type,test.w,test.h,test.w};
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
-        switch(test.type) {
-#define CASE(T) case hog_##T: im.buf=make_image<T>(test.w,test.h); HOGCompute(&ctx,im); break
-            // #define CASE(T) case hog_##T: ecode=1; break
+        auto ctx=HOFInitialize(logger,p);
+        void *im=nullptr;
+        switch(test.type) {            
+#define CASE(T) case hof_##T: im=make_image<T>(test.w,test.h); HOFCompute(&ctx,im,test.type); break
+            // #define CASE(T) case hof_##T: ecode=1; break
             CASE(u8); CASE(u16); CASE(u32); CASE(u64);
             CASE(i8); CASE(i16); CASE(i32); CASE(i64);
             CASE(f32); CASE(f64);
 #undef CASE
         }        
-        HOGTeardown(&ctx);
-        delete im.buf;
+        HOFTeardown(&ctx);
+        delete im;
     });
 
-    run_test("HOGOutputByteCount",[](const testparams& test){
+    run_test("HOFOutputByteCount",[](const testparams& test){
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
-        HOGOutputByteCount(&ctx);
-        HOGTeardown(&ctx);
+        auto ctx=HOFInitialize(logger,p);
+        HOFOutputByteCount(&ctx);
+        HOFTeardown(&ctx);
     });
 
-    run_test("HOGOutputCopy",[](const testparams& test){
+    run_test("HOFOutputCopy",[](const testparams& test){
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
-        auto buf=new unsigned char[HOGOutputByteCount(&ctx)];
-        HOGOutputCopy(&ctx,buf,HOGOutputByteCount(&ctx));
+        auto ctx=HOFInitialize(logger,p);
+        auto buf=new unsigned char[HOFOutputByteCount(&ctx)];
+        HOFOutputCopy(&ctx,buf,HOFOutputByteCount(&ctx));
         delete buf;
-        HOGTeardown(&ctx);
+        HOFTeardown(&ctx);
     });
 
-    run_test("HOGOutputStrides",[](const testparams& test){
+    run_test("HOFOutputStrides",[](const testparams& test){
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
+        auto ctx=HOFInitialize(logger,p);
         struct HOGFeatureDims dims;
-        HOGOutputStrides(&ctx,&dims);
-        HOGTeardown(&ctx);
+        HOFOutputStrides(&ctx,&dims);
+        HOFTeardown(&ctx);
     });
 
-    run_test("HOGOutputShape",[](const testparams& test){
+    run_test("HOFOutputShape",[](const testparams& test){
         auto p=make_params(test);
-        auto ctx=HOGInitialize(logger,p,test.w,test.h);
+        auto ctx=HOFInitialize(logger,p);
         struct HOGFeatureDims dims;
-        HOGOutputShape(&ctx,&dims);
-        HOGTeardown(&ctx);
+        HOFOutputShape(&ctx,&dims);
+        HOFTeardown(&ctx);
     });
     return ecode;
 }

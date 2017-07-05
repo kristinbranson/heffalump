@@ -122,7 +122,7 @@ static struct workspace* workspace_create(
     return self;
 }
 
-struct LucasKanadeContext LucasKanedeInitialize(
+struct LucasKanadeContext LucasKanadeInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     unsigned w,
     unsigned h,

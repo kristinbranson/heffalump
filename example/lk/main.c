@@ -172,10 +172,10 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
             .smoothing=4.0   // This is the object scale
     }};
     struct LucasKanadeContext ctx[4]={
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params),
-        LucasKanedeInitialize(logger,256,256,256,params)
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params),
+        LucasKanadeInitialize(logger,256,256,256,params)
     };
 
     float* out=malloc(LucasKanadeOutputByteCount(&ctx[0]));

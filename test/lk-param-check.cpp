@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <functional>
 using namespace std;
 
 #define countof(e) (sizeof(e)/sizeof((e)[0]))
@@ -48,6 +49,13 @@ static vector<testparams> make_tests() {
 	tests.push_back(p);
 #endif
 	return tests;
+}
+
+// encode rules for expected parameter validation 
+// failures
+static bool expect_graceful_failure(const testparams& test) {
+    return 0
+        ;
 }
 
 static int ecode=0;
@@ -113,25 +121,34 @@ string test_desc(const testparams& test) {
     return ss.str();
 }
 
-int main() {
-	LOG("Init/Teardown");
+void run_test(const char* name, function<void(const testparams& test)> eval) {
+    LOG("%s",name);
     for(const auto& test:make_tests()) {
         LOG("\tTEST: %s",test_desc(test).c_str());
-        auto p=make_params(test);
-        auto lk=LucasKanedeInitialize(logger,test.w,test.h,test.w,make_params());
-        LucasKanadeTeardown(&lk);
+        eval(test);
+        if(expect_graceful_failure(test)) {
+            if(ecode==1) ecode=0; // Ok. reset
+            else         ecode=2; // failed to report expected error.
+        }
         if(ecode) {
             LOG("\tFAIL: %s",test_desc(test).c_str());
             exit(ecode);
         }
     }
-	LOG("With compute");
-	for(const auto& test:make_tests()) {
-		LOG("\tTEST: %s",test_desc(test).c_str());
-		auto p=make_params(test);
-		auto lk=LucasKanedeInitialize(logger,test.w,test.h,test.w,make_params());
+}
+
+int main() {
+    run_test("Init/Teardown",[](const testparams& test) {
+        auto p=make_params(test);
+        auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        LucasKanadeTeardown(&lk);
+    });
+    run_test("Compute",[](const testparams& test) {
+        auto p=make_params(test);
+		auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        void *im;
 		switch(test.type) {
-		    #define CASE(T) case lk_##T: LucasKanade(&lk,make_image<T>(test.w,test.h),test.type); break
+		    #define CASE(T) case lk_##T: LucasKanade(&lk,im=make_image<T>(test.w,test.h),test.type); break
 		    // #define CASE(T) case lk_##T: ecode=1; break
 		    CASE(u8); CASE(u16); CASE(u32); CASE(u64);
 		    CASE(i8); CASE(i16); CASE(i32); CASE(i64);
@@ -139,10 +156,40 @@ int main() {
 		    #undef CASE
 		}        
 		LucasKanadeTeardown(&lk);
-		if(ecode) {
-			LOG("\tFAIL: %s",test_desc(test).c_str());
-			exit(ecode);
-		}
-	}
+        delete im;
+    });
+	
+    run_test("LucasKanadeOutputByteCount",[](const testparams& test){
+        auto p=make_params(test);
+        auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        LucasKanadeOutputByteCount(&ctx);
+        LucasKanadeTeardown(&ctx);
+    });
+
+    run_test("LucasKanadeOutputCopy",[](const testparams& test){
+        auto p=make_params(test);
+        auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        auto buf=new unsigned char[LucasKanadeOutputByteCount(&ctx)];
+        LucasKanadeCopyOutput(&ctx,(float*)buf,LucasKanadeOutputByteCount(&ctx));
+        delete buf;
+        LucasKanadeTeardown(&ctx);
+    });
+
+    run_test("LucasKanadeOutputStrides",[](const testparams& test){
+        auto p=make_params(test);
+        auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        struct LucasKanadeOutputDims dims;
+        LucasKanadeOutputStrides(&ctx,&dims);
+        LucasKanadeTeardown(&ctx);
+    });
+
+    run_test("LucasKanadeOutputShape",[](const testparams& test){
+        auto p=make_params(test);
+        auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        struct LucasKanadeOutputDims dims;
+        LucasKanadeOutputShape(&ctx,&dims);
+        LucasKanadeTeardown(&ctx);
+    });
+
     return ecode;
 }

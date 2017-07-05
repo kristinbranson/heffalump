@@ -5,10 +5,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define LOG(...) self.logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define PLOG(...) self->logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define ERR(...) self->logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)){ERR("Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
+#define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
+#define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
+#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 extern void gradHist(
     float *M,float *O,float *H,int h,int w,
@@ -22,8 +21,11 @@ struct workspace {
 
 
 static size_t features_nelem(const struct HOFContext *self) {
-    int ncell=(self->params.input.w/self->params.cell.w)*(self->params.input.h/self->params.cell.h);
-    return ncell*self->params.nbins;
+    if(self->params.cell.w && self->params.cell.h) {
+        int ncell=(self->params.input.w/self->params.cell.w)*(self->params.input.h/self->params.cell.h);
+        return ncell*self->params.nbins;
+    }
+    return 0;
 }
 
 static size_t features_nbytes(const struct HOFContext *self) {
@@ -38,8 +40,10 @@ static size_t workspace_nbytes(const struct HOFContext *self) {
     return sizeof(struct workspace)+features_nbytes(self);
 }
 
-static struct workspace* workspace_init(const struct HOFContext *self) {
-    struct workspace* ws=malloc(workspace_nbytes(self));
+static struct workspace* workspace_init(const struct HOFContext *self) {    
+    struct workspace* ws=0;
+    CHECK(self->logger,features_nelem(self)>0);
+    CHECK(self->logger,ws=malloc(workspace_nbytes(self)));
     float k[3]={-1,0,1},*ks[]={k,k};
     unsigned 
         nkx[]={3,0},
@@ -47,11 +51,13 @@ static struct workspace* workspace_init(const struct HOFContext *self) {
         w=self->params.input.w,
         h=self->params.input.h;
 
-    ws->lk=LucasKanedeInitialize(self->logger,w,h,self->params.input.pitch,self->params.lk);
+    ws->lk=LucasKanadeInitialize(self->logger,w,h,self->params.input.pitch,self->params.lk);
 
     ws->M=malloc(sizeof(float)*w*h*2);
-    ws->O=ws->M+w*h;
+    ws->O=ws->M+w*h;    
     return ws;
+Error:
+    return 0;
 }
 
 #include <math.h>
@@ -91,21 +97,24 @@ struct HOFContext HOFInitialize(
 
 
 void HOFTeardown(struct HOFContext *self) {
-    struct workspace* ws=(struct workspace*)self->workspace;
-    LucasKanadeTeardown(&ws->lk);
-    free(ws->M);
-    free(self->workspace);
+    if(self->workspace) {
+        struct workspace* ws=(struct workspace*)self->workspace;
+        LucasKanadeTeardown(&ws->lk);
+        free(ws->M);
+        free(self->workspace);
+    }
 }
 
 
 void HOFCompute(struct HOFContext *self,const void* input,enum HOFScalarType type) {
+    CHECK(self->logger,self->workspace);
     struct workspace* ws=(struct workspace*)self->workspace;
     struct LucasKanadeOutputDims strides;
     
     // Compute gradients and convert to polar
     LucasKanade(&ws->lk,input,type);
     LucasKanadeOutputStrides(&ws->lk,&strides);
-    CHECK(strides.v==1); // programmer sanity check: we assume something about the memory order after this
+    CHECK(self->logger,strides.v==1); // programmer sanity check: we assume something about the memory order after this
 
     polar_ip(ws->lk.result,ws->lk.result+1,2,ws->lk.w*ws->lk.h);
 
@@ -123,7 +132,7 @@ void HOFCompute(struct HOFContext *self,const void* input,enum HOFScalarType typ
     const int use_soft_bin=1;
          
     if(self->params.cell.w!=self->params.cell.h) {
-        ERR("gradHist only allows for square cells");
+        ERR(self->logger,"gradHist only allows for square cells");
         goto Error;
     }
     memset(ws->features,0,features_nbytes(self));
@@ -138,8 +147,9 @@ size_t HOFOutputByteCount(const struct HOFContext *self) {
 }
 
 void HOFOutputCopy(const struct HOFContext *self, void *buf,size_t nbytes) {
+    CHECK(self->logger,self->workspace);
     struct workspace *ws=(struct workspace*)self->workspace;    
-    CHECK(features_nbytes(self)<=nbytes);
+    CHECK(self->logger,features_nbytes(self)<=nbytes);
     memcpy(buf,ws->features,features_nbytes(self));
     Error:;
 }
@@ -154,10 +164,13 @@ void HOFOutputStrides(const struct HOFContext *self,struct HOGFeatureDims *strid
     };
 }
 
-void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) {
-    *shape=(struct HOGFeatureDims) {
-        .x=self->params.input.w/self->params.cell.w,
-        .y=self->params.input.h/self->params.cell.h,
-        .bin=self->params.nbins
-    };
+void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) {    
+    if(self->params.cell.w && self->params.cell.h) {
+        *shape=(struct HOGFeatureDims) {
+            .x=self->params.input.w/self->params.cell.w,
+            .y=self->params.input.h/self->params.cell.h,
+            .bin=self->params.nbins
+        };
+    }
+    *shape=(struct HOGFeatureDims) { 0,0,0 };
 }
