@@ -188,7 +188,7 @@ int main() {
         auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
         struct LucasKanadeOutputDims dims;
         LucasKanadeOutputShape(&ctx,&dims);
-        LucasKanadeTeardown(&ctx);
+        LucasKanadeTeardown(&ctx);        
     });
 
     return ecode;

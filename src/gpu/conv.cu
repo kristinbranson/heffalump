@@ -4,11 +4,15 @@
 #include <cuda_runtime.h>
 #include "conv.h"
 
-#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(logger,#e); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#include <string>
+#include <sstream>
+
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(logger,#e); throw SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,cudaGetErrorString(ecode));}} while(0)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)) throw(std::runtime_error(#e));}while(0)
+#define CHECK(e) do{if(!(e)) throw(SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,#e));}while(0)
 
 using namespace std;
+
 
 // aliasing the standard scalar types simplifies
 // the mapping of type id's to types. See SeparableConvolution().
@@ -28,31 +32,59 @@ using f64=double;
 namespace priv {
 namespace conv {
 namespace gpu {
+
+    struct SeparableConvolutionError : public exception {		
+        SeparableConvolutionError(const char* file, int line, const char* function, const char* msg) 
+        : file(file),function(function),msg(msg),line(line){
+            stringstream ss;
+            ss << "SeperableConvolution ERROR: " << msg << "\n\t" << file << "(" << line << "): " << function << "()";
+            string out=ss.str();
+            render.swap(out);
+        }
+        const char* what() const override {
+            return render.c_str();
+        }
+        string file,function,msg;
+        string render;
+        int line;
+    };
+
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
+
+    static size_t align_nbytes(size_t nbytes) {
+        return ((nbytes+15)>>4)<<4; // 16*ceil(nbytes/16.0)
+    }
+
+    template<typename T> static size_t align_nelem(size_t nelem) {
+        return align_nbytes(nelem*sizeof(T))/sizeof(T);
+    }
 
     /// returns number of bytes required for output buffer
     static size_t sizeof_output(unsigned w,unsigned h) {
-        return sizeof(float)*w*h;
+        return align_nbytes(sizeof(float)*w*h);
     }
     /// returns number of bytes required for output buffer
     static size_t sizeof_output(const struct SeparableConvolutionContext* self) {
         return sizeof_output(self->w,self->h);
     }
-
+    
     /// Manages working storage and resources
     struct workspace {
         workspace(logger_t logger, const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p)
         : logger(logger)
         , stream(nullptr) 
         {
-            nkernel[0]=nks[0];
-            nkernel[1]=nks[1];
+            nkernel[0]=nks[0]+(nks[0]?!(nks[0]&1):0); // pad to odd value if necessary - later code assumes odd
+            nkernel[1]=nks[1]+(nks[1]?!(nks[1]&1):0);
             in=nullptr;
             nbytes_in=0;
             CUTRY(cudaMalloc(&out,sizeof_output(w,h)));
             CUTRY(cudaMalloc(&tmp,sizeof_output(w,h)));
-            CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nks[0]));
-            CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nks[1]));
+            CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nkernel[0]));
+            CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nkernel[1]));  
+            // set to zero so padded coeffs are 0          
+            if(nkernel[0]) CUTRY(cudaMemset(kernels[0],0,sizeof(float)*nkernel[0]));
+            if(nkernel[1]) CUTRY(cudaMemset(kernels[1],0,sizeof(float)*nkernel[1]));
 
             CUTRY(cudaMemcpy(kernels[0],ks[0],nks[0]*sizeof(float),cudaMemcpyHostToDevice));
             CUTRY(cudaMemcpy(kernels[1],ks[1],nks[1]*sizeof(float),cudaMemcpyHostToDevice));
@@ -78,7 +110,7 @@ namespace gpu {
             size_t n=sizeof(T)*p*h;
             if(!is_dev_ptr) {
                 if(n>nbytes_in) {// realloc                
-                    nbytes_in=n;
+                    nbytes_in=align_nbytes(n);
                     CUTRY(cudaFree(in)); // noop if in is null
                     CUTRY(cudaMalloc(&in,nbytes_in));                
                 }
@@ -299,6 +331,7 @@ namespace gpu {
         const int A=(nk-1)/2;
         const int ny=th.z*32-2*A;
         dim3 grid((w+31)/32,(h+ny-1)/ny,1);
+//        w=align_nelem<T>(w);
         conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,p,k,nk);
     }
 
@@ -313,6 +346,7 @@ namespace gpu {
         #undef PAYLOAD        
         CHECK(nx>0); // if this fails, your kernel is too big :(
         dim3 grid((w+nx-1)/nx,(h+BH-1)/BH);
+        w=align_nelem<T>(w);
         conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,p,k,nk);
     }
 
@@ -344,7 +378,7 @@ namespace gpu {
         } else {
             // nothing to do I guess?
             // cast to float?
-            throw std::runtime_error("Not implemented");
+            throw SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,"Not implemented");
             // TODO
         }
 #endif
@@ -376,7 +410,7 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
     const float    *kernel[2], // These will be copied in to the context
     const unsigned nkernel[2]
 ) {
-    struct SeparableConvolutionContext self;
+    struct SeparableConvolutionContext self={0};
     try {
         auto ws=new workspace(logger,kernel,nkernel,w,h,pitch);
         self.logger=logger;
@@ -385,7 +419,7 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
         self.pitch=pitch;
         self.out=ws->out; // device ptr. this really shouldn't be used here?...It's convenient to avoid copies.
         self.workspace=ws;
-    } catch(const std::runtime_error& e) {
+    } catch(const SeparableConvolutionError& e) {
         ERR(logger,e.what());
     } catch(...) {
         ERR(logger,"CONV: Initialization problem.");
@@ -397,7 +431,7 @@ void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     try {
         auto ws=static_cast<workspace*>(self->workspace);
         delete ws;
-    } catch(const std::runtime_error& e) {
+    } catch(const SeparableConvolutionError& e) {
         ERR(self->logger,e.what());
     } catch(...) {
         if(self && self->logger)
@@ -421,7 +455,7 @@ void SeparableConvolution(struct SeparableConvolutionContext *self,enum Separabl
             CASE(f64);
     #undef CASE
         }
-    } catch(const std::runtime_error &e) {
+    } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,"CUDA: %s",e.what());
     } catch(...) {
         ERR(self->logger,"CONV: Compute problem.");
@@ -439,7 +473,7 @@ void SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *se
         logger_t logger=self->logger;
         CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));
-    } catch(const std::runtime_error &e) {
+    } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,"CONV: %s",e.what());
     } catch(const char* emsg) {
         ERR(self->logger,emsg);
@@ -471,7 +505,7 @@ void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolu
             CASE(f64);
 #undef CASE
         }
-    } catch(const std::runtime_error &e) {
+    } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,"CUDA: %s",e.what());
     } catch(...) {
         ERR(self->logger,"CONV: Compute problem.");

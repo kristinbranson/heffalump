@@ -18,7 +18,7 @@ if (-Not (Test-Path build)){
 
 write-host "Building ..."
 cd build
-&(msbuild("12.0")) hog.sln /m /nologo /clp:"Verbosity=minimal;ShowTimestamp;"
+&(msbuild("12.0")) heffalump.sln /m /nologo /clp:"Verbosity=minimal;ShowTimestamp;"
 $build_ret_code=$LASTEXITCODE
 cd ..
 
