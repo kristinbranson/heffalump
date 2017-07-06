@@ -15,7 +15,7 @@ using namespace std;
 struct testparams {int w,h; float d,s; LucasKanadeScalarType type;};
 // Tests will be constructed from combinations of these various sets
 static vector<testparams> sizes = {
-    {0,     0,      1.0f,    3.0f,    lk_u8},
+    //{0,     0,      1.0f,    3.0f,    lk_u8},
     {320,   240,    1.0f,    3.0f,    lk_u8},
     {12,    77,     1.0f,    3.0f,    lk_u8},
     {1,     1,      1.0f,    3.0f,    lk_u8},
@@ -35,7 +35,7 @@ static vector<testparams> types = {
 };
 
 static vector<testparams> make_tests() {
-	vector<testparams> tests;
+    vector<testparams> tests;
 #if 1
     for(const auto& size:sizes)
         for(const auto& type:types) {
@@ -45,10 +45,9 @@ static vector<testparams> make_tests() {
             tests.push_back(p);
         }
 #else
-	testparams p={12,77,1,3,lk_u8};
-	tests.push_back(p);
+    tests.push_back({320,240,1,3,lk_u8});
 #endif
-	return tests;
+    return tests;
 }
 
 // encode rules for expected parameter validation 
@@ -88,7 +87,7 @@ static struct LucasKanadeParameters make_params(const testparams& t) {
 }
 
 template<typename T> T* make_image(int w,int h) {
-	return new T[w*h];
+    return new T[w*h];
 }
 
 // alias these to help with 
@@ -138,27 +137,27 @@ void run_test(const char* name, function<void(const testparams& test)> eval) {
 }
 
 int main() {
-    run_test("Init/Teardown",[](const testparams& test) {
-        auto p=make_params(test);
-        auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
-        LucasKanadeTeardown(&lk);
-    });
+    //run_test("Init/Teardown",[](const testparams& test) {
+    //    auto p=make_params(test);
+    //    auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+    //    LucasKanadeTeardown(&lk);
+    //});
     run_test("Compute",[](const testparams& test) {
         auto p=make_params(test);
-		auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
+        auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
         void *im;
-		switch(test.type) {
-		    #define CASE(T) case lk_##T: LucasKanade(&lk,im=make_image<T>(test.w,test.h),test.type); break
-		    // #define CASE(T) case lk_##T: ecode=1; break
-		    CASE(u8); CASE(u16); CASE(u32); CASE(u64);
-		    CASE(i8); CASE(i16); CASE(i32); CASE(i64);
-		    CASE(f32); CASE(f64);
-		    #undef CASE
-		}        
-		LucasKanadeTeardown(&lk);
+        switch(test.type) {
+            #define CASE(T) case lk_##T: im=make_image<T>(test.w,test.h); LucasKanade(&lk,im,test.type); break
+            // #define CASE(T) case lk_##T: ecode=1; break
+            CASE(u8); CASE(u16); CASE(u32); CASE(u64);
+            CASE(i8); CASE(i16); CASE(i32); CASE(i64);
+            CASE(f32); CASE(f64);
+            #undef CASE
+        }        
+        LucasKanadeTeardown(&lk);
         delete im;
     });
-	
+    
     run_test("LucasKanadeOutputByteCount",[](const testparams& test){
         auto p=make_params(test);
         auto ctx=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);

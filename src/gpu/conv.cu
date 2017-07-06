@@ -499,14 +499,15 @@ void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolu
             CASE(u8);
             CASE(u16);
             CASE(u32);
-            CASE(u64);
+            //CASE(u64); // FIXME: 8-byte wide types are unsupported due to PAYLOAD calculation
             CASE(i8);
             CASE(i16);
             CASE(i32);
-            CASE(i64);
+            //CASE(i64);
             CASE(f32);
-            CASE(f64);
+            //CASE(f64);
 #undef CASE
+            default: ERR(self->logger,"Unsupported input type");
         }
     } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,"CUDA: %s",e.what());

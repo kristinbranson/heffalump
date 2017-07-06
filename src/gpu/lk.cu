@@ -155,10 +155,10 @@ namespace gpu {
         , params(params)
         {
             CUTRY(logger,cudaMalloc(&out,bytesof_output()));
-            CUTRY(logger,cudaMalloc(&input,bytesof_input()));
-            CUTRY(logger,cudaMalloc(&last,bytesof_input()));
+            CUTRY(logger,cudaMalloc(&input,bytesof_input_storage()));
+            CUTRY(logger,cudaMalloc(&last,bytesof_input_storage()));
             
-            CUTRY(logger,cudaMemset(last,0,bytesof_input()));
+            CUTRY(logger,cudaMemset(last,0,bytesof_input_storage()));
 
             make_kernels();
 
@@ -254,7 +254,7 @@ namespace gpu {
 
         void compute(const void* im, enum LucasKanadeScalarType type) {
             try {
-                CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(),cudaMemcpyHostToDevice,streams[0]));
+                CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(type),cudaMemcpyHostToDevice,streams[0]));
                 CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
                 CUTRY(logger,cudaStreamWaitEvent(streams[1],input_ready,0));
                 CUTRY(logger,cudaStreamWaitEvent(streams[2],input_ready,0));
@@ -274,8 +274,8 @@ namespace gpu {
 
                     // copy kernel uses vectorized load/stores
     #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
-                    CHECK(logger,aligned_to(input,16));// input must be alighned to float4 (16 bytes)
-                    CHECK(logger,aligned_to(last,16)); // output must be alighned to float4 (16 bytes)
+                    CHECK(logger,aligned_to(input,16));// input must be aligned to float4 (16 bytes)
+                    CHECK(logger,aligned_to(last,16)); // output must be aligned to float4 (16 bytes)
                     const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
                     CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
     #undef aligned_to
@@ -364,9 +364,15 @@ namespace gpu {
             }
         }
 
-        size_t bytesof_input() const {
-            return bytes_per_pixel(lk_f64)*pitch*h; // use worst-case scenario
+        size_t bytesof_input(enum LucasKanadeScalarType type) const {
+            return bytes_per_pixel(type)*pitch*h;
         }
+
+        size_t bytesof_input_storage() const {
+            return bytesof_input(lk_f64); // use worst-case scenario
+        }
+
+        
 
         size_t bytesof_intermediate() const {
             return sizeof(float)*w*h;
@@ -463,7 +469,7 @@ extern "C" struct LucasKanadeContext LucasKanadeInitialize(
 
 void LucasKanadeTeardown(struct LucasKanadeContext *self) {
     if(!self) return;
-    struct workspace* ws=(struct workspace*)self->workspace;
+    struct workspace* ws=(struct workspace*)self->workspace;    
     delete ws;
     self->workspace=nullptr;
 }
