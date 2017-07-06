@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -26,13 +27,13 @@ static vector<testparams> types = {
     {0,     0,      0,    0,    conv_u8},
     {0,     0,      0,    0,    conv_u16},
     {0,     0,      0,    0,    conv_u32},
-    //{0,     0,      0,    0,    conv_u64},
+    {0,     0,      0,    0,    conv_u64},
     {0,     0,      0,    0,    conv_i8},
     {0,     0,      0,    0,    conv_i16},
     {0,     0,      0,    0,    conv_i32},
-    //{0,     0,      0,    0,    conv_i64},    
+    {0,     0,      0,    0,    conv_i64},    
     {0,     0,      0,    0,    conv_f32},
-    //{0,     0,      0,    0,    conv_f64},
+    {0,     0,      0,    0,    conv_f64},
 };
 static vector<testparams> kernel_sizes = {
     {0,     0,      1,    0,    conv_u8},
@@ -47,20 +48,29 @@ static vector<testparams> kernel_sizes = {
     {0,     0,      9,    9,    conv_u8},
 };
 
-// FIXME: Enable large kernel sizes? (gpu)
-// FIXME: Enable 8 byte input types (gpu) - restricted by PAYLOAD size calculations
-// FIXME: pitch must be aligned...that's pretty restrictive.  I can get around most of the other alignment problems.
-//        one solution would be to 2d memcpy the data in so the pitch becomes aligned.
-//        Output copy?
-//
-//
-//        The other possibility is just to look at a simpler conv impl that doesn't try to be all fancy about the loads.
-//        That's probably the better option!
+size_t sizeof_type(SeparableConvolutionScalarType t) {
+    size_t b[]={1,2,4,8,1,2,4,8,4,8};
+    return b[int(t)];
+}
 
+// encode rules for expected parameter validation 
+// failures
+static bool expect_graceful_failure(const testparams& test) {
+    size_t required_alignment=16/sizeof_type(test.type);
+    return 0
+        ||test.type==conv_u64 // (gpu) 8-byte wide types unsupported
+        ||test.type==conv_i64
+        ||test.type==conv_f64
+        // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+        //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+        //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+        ||(test.kw!=0 && test.w%required_alignment!=0) 
+        ;
+}
 
 static vector<testparams> make_tests() {
     vector<testparams> tests;    
-#if 0
+#if 1
     for(const auto& size:sizes)
     for(const auto& nks:kernel_sizes)
     for(const auto& type:types) {
@@ -129,6 +139,22 @@ string test_desc(const testparams& test) {
     return ss.str();
 }
 
+void run_test(const char* name,function<void(const testparams& test)> eval) {
+    LOG("%s",name);
+    for(const auto& test:make_tests()) {
+        LOG("\tTEST: %s",test_desc(test).c_str());
+        eval(test);
+        if(expect_graceful_failure(test)) {
+            if(ecode==1) ecode=0; // Ok. reset
+            else         ecode=2; // failed to report expected error.
+        }
+        if(ecode) {
+            LOG("\tFAIL: %s",test_desc(test).c_str());
+            exit(ecode);
+        }
+    }
+}
+
 int main() {
     auto tests=make_tests();
     // make kernels
@@ -139,37 +165,27 @@ int main() {
     }
     vector<float> k(mx);
     const float* ks[2]={k.data(),k.data()};
+    
+    //run_test("Init/Teardown",[&](const testparams &test) {
+    //    const unsigned nks[2]={test.kw,test.kh};
+    //    auto ctx=SeparableConvolutionInitialize(logger,test.w,test.h,test.w,ks,nks);
+    //    SeparableConvolutionTeardown(&ctx);
+    //});
 
-    LOG("Init/Teardown");
-    for(const auto& test:tests) {
+    run_test("Compute",[&](const testparams &test) {
         const unsigned nks[2]={test.kw,test.kh};
-        LOG("\tTEST: %s",test_desc(test).c_str());
-        auto ctx=SeparableConvolutionInitialize(logger,test.w,test.h,test.w,ks,nks);
-        SeparableConvolutionTeardown(&ctx);
-        if(ecode) {
-            LOG("\tFAIL: %s",test_desc(test).c_str());
-            exit(ecode);
-        }
-    }
-
-    LOG("With compute");
-    for(const auto& test:tests) {
-        const unsigned nks[2]={test.kw,test.kh};
-        LOG("\tTEST: %s",test_desc(test).c_str());
         auto ctx=SeparableConvolutionInitialize(logger,test.w,test.h,test.w,ks,nks);
         switch(test.type) {
-            #define CASE(T) case conv_##T: SeparableConvolution(&ctx,test.type,make_image<T>(test.w,test.h)); break
+        #define CASE(T) case conv_##T: SeparableConvolution(&ctx,test.type,make_image<T>(test.w,test.h)); break
             CASE(u8); CASE(u16); CASE(u32); CASE(u64);
             CASE(i8); CASE(i16); CASE(i32); CASE(i64);
             CASE(f32); CASE(f64);
-            #undef CASE
+        #undef CASE
             default: ecode=2;
-        } 
-        SeparableConvolutionTeardown(&ctx);
-        if(ecode) {
-            LOG("\tFAIL: %s",test_desc(test).c_str());
-            exit(ecode);
         }
-    }
+        SeparableConvolutionTeardown(&ctx);
+    });
+
+    
     return ecode;
 }

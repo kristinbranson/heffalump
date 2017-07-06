@@ -335,19 +335,21 @@ namespace gpu {
         conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,p,k,nk);
     }
 
-    template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int p,float *k,int nk,cudaStream_t stream) {        
+    template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int pitch,float *k,int nk,cudaStream_t stream) {        
         CHECK(nk&1==1);
 
         dim3 th(32,BH);
         #define PAYLOAD  (sizeof(float4)/sizeof(T))  // one load transaction gets this many T elements         
+        CHECK(pitch%PAYLOAD==0);                     // pitch must be aligned to 16 bytes (PAYLOAD elements)
         const int A=(nk-1)/2;                        // apron size (elems): nk|A :: 3|1, 9|4, 19|9
         const int P=PAYLOAD*((A+PAYLOAD-1)/PAYLOAD); // aligned apron size (elems): eg for u16, PAYLOAD=8 - nk|P :: 3|8, 9|8, 19|16
         const int nx=th.x*PAYLOAD-2*P;               // the number of output elements computed by 1 warp.
         #undef PAYLOAD        
         CHECK(nx>0); // if this fails, your kernel is too big :(
+        
         dim3 grid((w+nx-1)/nx,(h+BH-1)/BH);
         w=align_nelem<T>(w);
-        conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,p,k,nk);
+        conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,pitch,k,nk);
     }
 
     /// 2d convolution
@@ -410,7 +412,7 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
     const float    *kernel[2], // These will be copied in to the context
     const unsigned nkernel[2]
 ) {
-    struct SeparableConvolutionContext self={0};
+    struct SeparableConvolutionContext self={0};    
     try {
         auto ws=new workspace(logger,kernel,nkernel,w,h,pitch);
         self.logger=logger;
@@ -446,14 +448,15 @@ void SeparableConvolution(struct SeparableConvolutionContext *self,enum Separabl
             CASE(u8);
             CASE(u16);
             CASE(u32);
-            CASE(u64);
+            // CASE(u64); // FIXME: 8-byte wide types are unsupported due to PAYLOAD calculation
             CASE(i8);
             CASE(i16);
             CASE(i32);
-            CASE(i64);
+            // CASE(i64);
             CASE(f32);
-            CASE(f64);
+            // CASE(f64);
     #undef CASE
+            default: ERR(self->logger,"Unsupported input type");
         }
     } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,"CUDA: %s",e.what());
