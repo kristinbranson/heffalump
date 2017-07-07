@@ -50,18 +50,8 @@ static vector<testparams> types = {
     {0,     0,      0,    0,    0,    hof_f64},
 };
 
-// encode rules for expected parameter validation 
-// failures
-static bool expect_graceful_failure(const testparams& test) {
-    return 0
-        || test.nbins==0                        // no bins
-        || (test.cw==0||test.ch==0)             // zero cell size
-        || (test.w<test.cw)||(test.h<test.ch)   // no cells (image too small)
-        ;
-}
-
 static vector<testparams> make_tests() {
-	vector<testparams> tests;
+    vector<testparams> tests;
 #if 1
     for(const auto& size:sizes)
     for(const auto& nbin:bin_sizes)
@@ -76,10 +66,10 @@ static vector<testparams> make_tests() {
         tests.push_back(p);
     }
 #else
-	testparams p={320,240,1,1,1,hof_f64};
-	tests.push_back(p);
+    testparams p={320,240,1,1,1,hof_f64};
+    tests.push_back(p);
 #endif
-	return tests;
+    return tests;
 }
 
 static int ecode=0;
@@ -110,11 +100,16 @@ static struct HOFParameters make_params(const testparams& t) {
 }
 
 template<typename T> T* make_image(int w,int h) {
-	T* im=new T[w*h];
+    T* im=new T[w*h];
     // need to init to avoid nan's
     for(int i=0;i<(w*h);++i)
         im[i]=T(i);
     return im;
+}
+
+static size_t sizeof_type(HOFScalarType t) {
+    size_t b[]={1,2,4,8,1,2,4,8,4,8};
+    return b[int(t)];
 }
 
 // alias these to help with 
@@ -147,12 +142,24 @@ string test_desc(const testparams& test) {
     return ss.str();
 }
 
-void run_test(const char* name, function<void(const testparams& test)> eval) {
+// encode rules for expected parameter validation 
+// failures
+static bool default_expect_failure(const testparams& test) {
+    return 0
+        ||test.nbins==0                        // no bins
+        ||(test.cw==0||test.ch==0)             // zero cell size
+        ||(test.w<=test.cw)||(test.h<=test.ch)   // no cells (image too small)
+        ;
+}
+
+void run_test(const char* name,
+    function<void(const testparams& test)> eval,
+    function<bool(const testparams& test)> expect_failure=default_expect_failure) {
     LOG("%s",name);
     for(const auto& test:make_tests()) {
         LOG("\tTEST: %s",test_desc(test).c_str());
         eval(test);
-        if(expect_graceful_failure(test)) {
+        if(expect_failure(test)) {
             if(ecode==1) ecode=0; // Ok. reset
             else         ecode=2; // failed to report expected error.
         }
@@ -183,6 +190,20 @@ int main() {
         }        
         HOFTeardown(&ctx);
         delete im;
+    },[](const testparams& test) {
+        // encode rules for expected parameter validation 
+        // failures
+        size_t required_alignment=16/sizeof_type(test.type);
+        return default_expect_failure(test)
+            // Restrictions inhereted by convolution
+            ||test.type==hof_u64 // (gpu) 8-byte wide types unsupported
+            ||test.type==hof_i64
+            ||test.type==hof_f64
+            // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+            //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+            //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+            ||(test.w%required_alignment!=0)
+            ;
     });
 
     run_test("HOFOutputByteCount",[](const testparams& test){

@@ -235,8 +235,8 @@ namespace gpu {
             }
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const  {
-				CHECK(logger,params.cell.w>0);
-				CHECK(logger,params.cell.h>0);
+                CHECK(logger,params.cell.w>0);
+                CHECK(logger,params.cell.h>0);
                 shape[0]=CEIL(params.image.w,params.cell.w);
                 shape[1]=CEIL(params.image.h,params.cell.h);
                 shape[2]=params.nbins;
@@ -295,6 +295,7 @@ extern "C" {
             // Assert requirements
             CHECK(logger,param->cell.w<param->image.w);
             CHECK(logger,param->cell.h<param->image.h);
+            CHECK(logger,param->nbins>0); // code won't crash if nbins==0, but check for it anyway
             self->workspace=new priv::gradient_histogram::gpu::workspace(param,logger);
         }  catch(const std::bad_alloc& e) {
             ERR(logger,"Allocation failed: %s",e.what());
@@ -355,7 +356,11 @@ extern "C" {
     ///
     /// The last size is the total number of elements in the volume.
     void GradientHistogramOutputShape(const struct gradientHistogram *self,unsigned shape[3], unsigned strides[4]) {
-        if(!self||!self->workspace) return;
+        if(!self||!self->workspace) {
+            memset(shape,0,sizeof(unsigned[3]));
+            memset(strides,0,sizeof(unsigned[4]));
+            return;
+        }
         WORKSPACE->output_shape(shape,strides);
     }
 #undef WORKSPACE

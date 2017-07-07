@@ -319,8 +319,9 @@ namespace gpu {
         #undef PAYLOAD
     }
 
-    template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int p,const float *k,int nk,cudaStream_t stream) {
+    template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int pitch,const float *k,int nk,cudaStream_t stream) {
         #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
+        CHECK(pitch%PAYLOAD==0);                    // pitch must be aligned to 16 bytes (PAYLOAD elements)
         /*    PAYLOAD by bz  (ny+2A) | by*bz=8 
          * u8      16  2  4     128
          * u16      8  4  2      64
@@ -332,7 +333,7 @@ namespace gpu {
         const int ny=th.z*32-2*A;
         dim3 grid((w+31)/32,(h+ny-1)/ny,1);
 //        w=align_nelem<T>(w);
-        conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,p,k,nk);
+        conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,pitch,k,nk);
     }
 
     template<typename T,int BH> void conv_unit_stride(float *out,const T* in,int w, int h, int pitch,float *k,int nk,cudaStream_t stream) {        
@@ -431,10 +432,10 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
 
 void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     try {
-		if(self && self->workspace) {
-			auto ws=static_cast<workspace*>(self->workspace);
-			delete ws;
-		}
+        if(self && self->workspace) {
+            auto ws=static_cast<workspace*>(self->workspace);
+            delete ws;
+        }
     } catch(const SeparableConvolutionError& e) {
         ERR(self->logger,e.what());
     } catch(...) {

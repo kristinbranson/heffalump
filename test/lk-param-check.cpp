@@ -119,7 +119,7 @@ string test_desc(const testparams& test) {
 }
 
 bool expect_failures_default(const testparams& test) {
-	return 0;
+    return 0;
 }
 
 void run_test(const char* name, function<void(const testparams& test)> eval, function<bool(const testparams& test)> expect_failure=expect_failures_default) {
@@ -143,7 +143,7 @@ int main() {
         auto p=make_params(test);
         auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
         LucasKanadeTeardown(&lk);
-	});
+    });
     run_test("Compute",[](const testparams& test) {
         auto p=make_params(test);
         auto lk=LucasKanadeInitialize(logger,test.w,test.h,test.w,p);
@@ -158,19 +158,19 @@ int main() {
         }        
         LucasKanadeTeardown(&lk);
         delete im;
-	},[](const testparams& test) {
-		// encode rules for expected parameter validation failures		
-		size_t required_alignment=16/sizeof_type(test.type);
-		return 0
-			||test.type==lk_u64 // (gpu) 8-byte wide types unsupported
-			||test.type==lk_i64
-			||test.type==lk_f64
-			// (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
-			//                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
-			//                        When kernel width is set to zero, the unit-stride convolution is skipped.
-			||(test.w%required_alignment!=0) // Can't check this during construction, because we don't know they input type at that point (though that part of the design could be changed)
-			;
-	});
+    },[](const testparams& test) {
+        // encode rules for expected parameter validation failures		
+        size_t required_alignment=16/sizeof_type(test.type);
+        return 0
+            ||test.type==lk_u64 // (gpu) 8-byte wide types unsupported
+            ||test.type==lk_i64
+            ||test.type==lk_f64
+            // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+            //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+            //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+            ||(test.w%required_alignment!=0) // Can't check this during construction, because we don't know they input type at that point (though that part of the design could be changed)
+            ;
+    });
     
     run_test("LucasKanadeOutputByteCount",[](const testparams& test){
         auto p=make_params(test);

@@ -55,29 +55,8 @@ static size_t sizeof_type(HOGScalarType t) {
     return b[int(t)];
 }
 
-// encode rules for expected parameter validation 
-// failures
-static bool expect_graceful_failure(const testparams& test) {
-    size_t required_alignment=16/sizeof_type(test.type);
-    return 0
-        || test.nbins==0                        // no bins
-        || (test.cw==0||test.ch==0)             // zero cell size
-        || (test.w<=test.cw)||(test.h<=test.ch)   // no cells (image too small)		
-        
-        // Restrictions inhereted by convolution
-        ||test.type==hog_u64 // (gpu) 8-byte wide types unsupported
-        ||test.type==hog_i64
-        ||test.type==hog_f64
-        // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
-        //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
-        //                        When kernel width is set to zero, the unit-stride convolution is skipped.
-        ||(test.w%required_alignment!=0)
-        ;
-        ;
-}
-
 static vector<testparams> make_tests() {
-	vector<testparams> tests;
+    vector<testparams> tests;
 #if 1
     for(const auto& size:sizes)
     for(const auto& nbin:bin_sizes)
@@ -91,11 +70,10 @@ static vector<testparams> make_tests() {
         p.type=type.type;
         tests.push_back(p);
     }
-#else
-	testparams p={320,240,1,1,1,hog_f64};
-	tests.push_back(p);
+#else    
+    tests.push_back({320,240,1,1,1,hog_u64});
 #endif
-	return tests;
+    return tests;
 }
 
 static int ecode=0;
@@ -121,7 +99,7 @@ static struct HOGParameters make_params(const testparams& t) {
 }
 
 template<typename T> T* make_image(int w,int h) {
-	T* im=new T[w*h];
+    T* im=new T[w*h];
     // need to init to avoid nan's
     for(int i=0;i<(w*h);++i)
         im[i]=T(i);
@@ -158,12 +136,23 @@ string test_desc(const testparams& test) {
     return ss.str();
 }
 
-void run_test(const char* name, function<void(const testparams& test)> eval) {
+static bool default_expect_failure(const testparams& test) {
+    // encode rules for expected parameter validation failures
+    return 0
+        ||test.nbins==0                        // no bins
+        ||(test.cw==0||test.ch==0)             // zero cell size
+        ||(test.w<=test.cw)||(test.h<=test.ch) // no cells (image too small)
+        ;
+}
+
+void run_test(const char* name, 
+              function<void(const testparams& test)> eval,
+              function<bool(const testparams& test)> expect_failure=default_expect_failure) {
     LOG("%s",name);
     for(const auto& test:make_tests()) {
         LOG("\tTEST: %s",test_desc(test).c_str());
         eval(test);
-        if(expect_graceful_failure(test)) {
+        if(expect_failure(test)) {
             if(ecode==1) ecode=0; // Ok. reset
             else         ecode=2; // failed to report expected error.
         }
@@ -194,6 +183,20 @@ int main() {
         }        
         HOGTeardown(&ctx);
         delete im.buf;
+    },[](const testparams& test) {
+        // encode rules for expected parameter validation 
+        // failures
+        size_t required_alignment=16/sizeof_type(test.type);
+        return default_expect_failure(test)
+            // Restrictions inhereted by convolution
+            ||test.type==hog_u64 // (gpu) 8-byte wide types unsupported
+            ||test.type==hog_i64
+            ||test.type==hog_f64
+            // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+            //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+            //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+            ||(test.w%required_alignment!=0)
+            ;
     });
 
     run_test("HOGOutputByteCount",[](const testparams& test){

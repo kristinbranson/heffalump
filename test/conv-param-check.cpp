@@ -64,7 +64,7 @@ static bool expect_graceful_failure(const testparams& test) {
         // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
         //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
         //                        When kernel width is set to zero, the unit-stride convolution is skipped.
-        ||(test.kw!=0 && test.w%required_alignment!=0) 
+        ||(test.w%required_alignment!=0) 
         ;
 }
 
@@ -82,7 +82,7 @@ static vector<testparams> make_tests() {
         tests.push_back(p); 
     }
 #else
-    tests.push_back({1,1,1,0,conv_u8});
+    tests.push_back({1345,1829,0,1,conv_u8});
 #endif
     return tests;
 }
