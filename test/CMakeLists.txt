@@ -14,5 +14,6 @@ foreach(arch
         target_link_libraries(${tgt} heffalump_${arch})
         set_target_properties(${tgt} PROPERTIES FOLDER test/${arch})
         add_test(NAME test-${tgt} COMMAND ${tgt})
+        target_compile_definitions(${tgt} PRIVATE HEFFALUMP_TEST_${arch}=1)
     endforeach()
 endforeach()

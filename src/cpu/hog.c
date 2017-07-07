@@ -74,27 +74,27 @@ struct HOGContext HOGInitialize(
     const struct HOGParameters params,
     int w,int h)
 {
-	struct HOGContext self={
-		.logger=logger,
-		.params=params,
-		.w=w,.h=h,
-		.workspace=0
-	};
-	CHECK(logger,params.cell.w>0);
-	CHECK(logger,params.cell.h>0);
-	CHECK(logger,self.workspace=workspace_init(&self));
+    struct HOGContext self={
+        .logger=logger,
+        .params=params,
+        .w=w,.h=h,
+        .workspace=0
+    };
+    CHECK(logger,params.cell.w>0);
+    CHECK(logger,params.cell.h>0);
+    CHECK(logger,self.workspace=workspace_init(&self));
 Error:;
-	return self;
+    return self;
 }
 
 
 void HOGTeardown(struct HOGContext *self) {
-	if(self->workspace) {
-		struct workspace* ws=(struct workspace*)self->workspace;
-		SeparableConvolutionTeardown(&ws->dx);
-		SeparableConvolutionTeardown(&ws->dy);
-		free(self->workspace);
-	}
+    if(self->workspace) {
+        struct workspace* ws=(struct workspace*)self->workspace;
+        SeparableConvolutionTeardown(&ws->dx);
+        SeparableConvolutionTeardown(&ws->dy);
+        free(self->workspace);
+    }
 }
 
 

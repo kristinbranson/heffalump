@@ -119,10 +119,12 @@ string test_desc(const testparams& test) {
 }
 
 bool expect_failures_default(const testparams& test) {
-    return 0;
+    return false;
 }
 
-void run_test(const char* name, function<void(const testparams& test)> eval, function<bool(const testparams& test)> expect_failure=expect_failures_default) {
+void run_test(const char* name, 
+              function<void(const testparams& test)> eval,
+                  function<bool(const testparams& test)> expect_failure=expect_failures_default) {
     LOG("%s",name);
     for(const auto& test:make_tests()) {
         LOG("\tTEST: %s",test_desc(test).c_str());
@@ -161,7 +163,8 @@ int main() {
     },[](const testparams& test) {
         // encode rules for expected parameter validation failures		
         size_t required_alignment=16/sizeof_type(test.type);
-        return 0
+        return expect_failures_default(test)
+#ifdef HEFFALUMP_TEST_gpu
             ||test.type==lk_u64 // (gpu) 8-byte wide types unsupported
             ||test.type==lk_i64
             ||test.type==lk_f64
@@ -169,6 +172,7 @@ int main() {
             //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
             //                        When kernel width is set to zero, the unit-stride convolution is skipped.
             ||(test.w%required_alignment!=0) // Can't check this during construction, because we don't know they input type at that point (though that part of the design could be changed)
+#endif
             ;
     });
     

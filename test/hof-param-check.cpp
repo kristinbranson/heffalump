@@ -148,7 +148,11 @@ static bool default_expect_failure(const testparams& test) {
     return 0
         ||test.nbins==0                        // no bins
         ||(test.cw==0||test.ch==0)             // zero cell size
-        ||(test.w<=test.cw)||(test.h<=test.ch)   // no cells (image too small)
+#ifdef HEFFALUMP_TEST_gpu
+        ||(test.w<=test.cw)||(test.h<=test.ch) // no cells (image too small)
+#else
+        ||(test.w< test.cw)||(test.h< test.ch) // no cells (image too small)
+#endif
         ;
 }
 
@@ -195,6 +199,7 @@ int main() {
         // failures
         size_t required_alignment=16/sizeof_type(test.type);
         return default_expect_failure(test)
+#ifdef HEFFALUMP_TEST_gpu
             // Restrictions inhereted by convolution
             ||test.type==hof_u64 // (gpu) 8-byte wide types unsupported
             ||test.type==hof_i64
@@ -203,6 +208,7 @@ int main() {
             //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
             //                        When kernel width is set to zero, the unit-stride convolution is skipped.
             ||(test.w%required_alignment!=0)
+#endif
             ;
     });
 

@@ -53,21 +53,6 @@ size_t sizeof_type(SeparableConvolutionScalarType t) {
     return b[int(t)];
 }
 
-// encode rules for expected parameter validation 
-// failures
-static bool expect_graceful_failure(const testparams& test) {
-    size_t required_alignment=16/sizeof_type(test.type);
-    return 0
-        ||test.type==conv_u64 // (gpu) 8-byte wide types unsupported
-        ||test.type==conv_i64
-        ||test.type==conv_f64
-        // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
-        //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
-        //                        When kernel width is set to zero, the unit-stride convolution is skipped.
-        ||(test.w%required_alignment!=0) 
-        ;
-}
-
 static vector<testparams> make_tests() {
     vector<testparams> tests;    
 #if 1
@@ -137,6 +122,23 @@ string test_desc(const testparams& test) {
     stringstream ss;
     ss << "Parameters: (" << test.w << "," << test.h << "," << test.kw << "," << test.kh << "," << type_name(test.type) << ")";
     return ss.str();
+}
+
+// encode rules for expected parameter validation 
+// failures
+static bool expect_graceful_failure(const testparams& test) {
+    size_t required_alignment=16/sizeof_type(test.type);
+    return 0
+#ifdef HEFFALUMP_TEST_gpu
+        ||test.type==conv_u64 // (gpu) 8-byte wide types unsupported
+        ||test.type==conv_i64
+        ||test.type==conv_f64
+        // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+        //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+        //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+        ||(test.w%required_alignment!=0)
+#endif
+        ;
 }
 
 void run_test(const char* name,function<void(const testparams& test)> eval) {

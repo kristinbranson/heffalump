@@ -175,7 +175,7 @@ namespace cpu {
         const pitch_t p[2]={self->pitch,1};
         const sz_t s[2]={self->h,self->w};
         auto d=0;        
-		if(ws->nkernel[d]==0) {
+        if(ws->nkernel[d]==0) {
             // nothing to do, may need to convert to float
             for(sz_t i=0;i<s[d];++i)
                 copy1d_unit_stride(out+i*p[d],in+i*p[d],s[(d+1)%2]);
@@ -254,10 +254,10 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
 }
 
 void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {     
-	using namespace priv::conv::cpu;
+    using namespace priv::conv::cpu;
     try {
         delete [] self->out;
-		auto ws=static_cast<workspace*>(self->workspace);
+        auto ws=static_cast<workspace*>(self->workspace);
         delete ws;
     }catch(...) {
         if(self && self->logger)
