@@ -235,7 +235,8 @@ namespace gpu {
             }
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const  {
-
+				CHECK(logger,params.cell.w>0);
+				CHECK(logger,params.cell.h>0);
                 shape[0]=CEIL(params.image.w,params.cell.w);
                 shape[1]=CEIL(params.image.h,params.cell.h);
                 shape[2]=params.nbins;
@@ -317,11 +318,13 @@ extern "C" {
     /// Both images are sized (w,h).  The index of a pixel at (x,y)
     /// is x+y*p.  w,h and p should be specified in units of pixels.
     void GradientHistogram(struct gradientHistogram *self, const float *dx, const float *dy) {
+        if(!self || !self->workspace) return;
         WORKSPACE->compute(dx,dy);
     }
 
     /// Assign a stream for the computation.
     void GradientHistogramWithStream(struct gradientHistogram *self, cudaStream_t stream) {
+        if(!self||!self->workspace) return;
         WORKSPACE->with_stream(stream);
     }
 
@@ -335,10 +338,12 @@ extern "C" {
     /// Allocate a buffer capable of receiving the result.
     /// This buffer can be passed to `GradientHistogramCopyLastResult`.
     size_t GradientHistogramOutputByteCount(const struct gradientHistogram *self) {
+        if(!self||!self->workspace) return 0;
         return WORKSPACE->result_nbytes();
     }
 
     void GradientHistogramCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes) {
+        if(!self||!self->workspace) return;
         WORKSPACE->copy_last_result(buf,nbytes);
     }
 
@@ -350,6 +355,7 @@ extern "C" {
     ///
     /// The last size is the total number of elements in the volume.
     void GradientHistogramOutputShape(const struct gradientHistogram *self,unsigned shape[3], unsigned strides[4]) {
+        if(!self||!self->workspace) return;
         WORKSPACE->output_shape(shape,strides);
     }
 #undef WORKSPACE

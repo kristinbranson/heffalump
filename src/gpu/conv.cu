@@ -431,8 +431,10 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
 
 void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     try {
-        auto ws=static_cast<workspace*>(self->workspace);
-        delete ws;
+		if(self && self->workspace) {
+			auto ws=static_cast<workspace*>(self->workspace);
+			delete ws;
+		}
     } catch(const SeparableConvolutionError& e) {
         ERR(self->logger,e.what());
     } catch(...) {

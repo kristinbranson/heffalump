@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include "conv.h"
 using namespace std;
 
 #define countof(e) (sizeof(e)/sizeof((e)[0]))
@@ -49,13 +50,29 @@ static vector<testparams> types = {
     {0,     0,      0,    0,    0,    hog_f64},
 };
 
+static size_t sizeof_type(HOGScalarType t) {
+    size_t b[]={1,2,4,8,1,2,4,8,4,8};
+    return b[int(t)];
+}
+
 // encode rules for expected parameter validation 
 // failures
 static bool expect_graceful_failure(const testparams& test) {
+    size_t required_alignment=16/sizeof_type(test.type);
     return 0
         || test.nbins==0                        // no bins
         || (test.cw==0||test.ch==0)             // zero cell size
-        || (test.w<test.cw)||(test.h<test.ch)   // no cells (image too small)
+        || (test.w<=test.cw)||(test.h<=test.ch)   // no cells (image too small)		
+        
+        // Restrictions inhereted by convolution
+        ||test.type==hog_u64 // (gpu) 8-byte wide types unsupported
+        ||test.type==hog_i64
+        ||test.type==hog_f64
+        // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
+        //                        Oddly, the convolution in the non-unit-stride direction doesn't have this requirement
+        //                        When kernel width is set to zero, the unit-stride convolution is skipped.
+        ||(test.w%required_alignment!=0)
+        ;
         ;
 }
 
