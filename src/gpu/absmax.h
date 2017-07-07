@@ -28,7 +28,6 @@ namespace gpu {
     private:
 
         float *tmp;
-        int capacity;
         logger_t logger;
         float lower_bound;    
         cudaStream_t stream;

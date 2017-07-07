@@ -7,9 +7,11 @@
 #include <string>
 #include <sstream>
 
-#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(logger,#e); throw SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,cudaGetErrorString(ecode));}} while(0)
+
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(e) do{if(!(e)) throw(SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,#e));}while(0)
+#define EXCEPT(...) throw priv::conv::gpu::SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
+#define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
 using namespace std;
 
@@ -33,11 +35,14 @@ namespace priv {
 namespace conv {
 namespace gpu {
 
-    struct SeparableConvolutionError : public exception {		
-        SeparableConvolutionError(const char* file, int line, const char* function, const char* msg) 
-        : file(file),function(function),msg(msg),line(line){
+    struct SeparableConvolutionError: public exception {
+        template<typename... Args>
+        SeparableConvolutionError(const char* file,int line,const char* function,Args... args)
+            : file(file),function(function),msg(msg),line(line) {
             stringstream ss;
-            ss << "SeperableConvolution ERROR: " << msg << "\n\t" << file << "(" << line << "): " << function << "()";
+            ss<<"ERROR SeparableConvolution: ";
+            format(ss,args...);
+            ss<<"\n\t"<<file<<"("<<line<<"): "<<function<<"()";
             string out=ss.str();
             render.swap(out);
         }
@@ -47,6 +52,18 @@ namespace gpu {
         string file,function,msg;
         string render;
         int line;
+
+    private:
+        template<typename T>
+        static void format(stringstream& ss,T t) {
+            ss<<t;
+        }
+
+        template<typename T,typename... Args>
+        static void format(stringstream& ss,T t,Args... args) {
+            ss<<t;
+            format(ss,args...);
+        }
     };
 
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
@@ -349,14 +366,13 @@ namespace gpu {
         CHECK(nx>0); // if this fails, your kernel is too big :(
         
         dim3 grid((w+nx-1)/nx,(h+BH-1)/BH);
-        w=align_nelem<T>(w);
+        w=(int)align_nelem<T>(w);
         conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,pitch,k,nk);
     }
 
     /// 2d convolution
     template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
         auto ws=static_cast<workspace*>(self->workspace);
-        logger_t logger=self->logger;
         ws->load_input<T>(input,self->pitch,self->h,is_dev_ptr);
         CHECK(self->w==self->pitch); // TODO: relax this/test this
         
@@ -381,7 +397,7 @@ namespace gpu {
         } else {
             // nothing to do I guess?
             // cast to float?
-            throw SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,"Not implemented");
+            EXCEPT("Not implemented");
             // TODO
         }
 #endif
@@ -425,7 +441,7 @@ struct SeparableConvolutionContext SeparableConvolutionInitialize(
     } catch(const SeparableConvolutionError& e) {
         ERR(logger,e.what());
     } catch(...) {
-        ERR(logger,"CONV: Initialization problem.");
+        ERR(logger,"ERROR SeparableConvolution: Initialization problem.");
     }
     return self;
 }
@@ -440,7 +456,7 @@ void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
         ERR(self->logger,e.what());
     } catch(...) {
         if(self && self->logger)
-            ERR(self->logger,"CONV: Teardown problem.");
+            ERR(self->logger,"ERROR SeparableConvolution: Teardown problem.");
     }
 }
 
@@ -462,9 +478,9 @@ void SeparableConvolution(struct SeparableConvolutionContext *self,enum Separabl
             default: ERR(self->logger,"Unsupported input type");
         }
     } catch(const SeparableConvolutionError &e) {
-        ERR(self->logger,"CUDA: %s",e.what());
+        ERR(self->logger,e.what());
     } catch(...) {
-        ERR(self->logger,"CONV: Compute problem.");
+        ERR(self->logger,"ERROR SeparableConvolution: Compute problem.");
     }
 }
 
@@ -475,21 +491,20 @@ size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionCont
 void SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *self, float *out,size_t nbytes){ 
     try {
         CHECK(sizeof_output(self)<=nbytes);
-        auto ws=static_cast<workspace*>(self->workspace);
-        logger_t logger=self->logger;
+        auto ws=static_cast<workspace*>(self->workspace);        
         CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
         CUTRY(cudaStreamSynchronize(ws->stream));
     } catch(const SeparableConvolutionError &e) {
-        ERR(self->logger,"CONV: %s",e.what());
+        ERR(self->logger,e.what());
     } catch(const char* emsg) {
         ERR(self->logger,emsg);
     } catch(...) {
-        ERR(self->logger,"CONV: Copy problem.");
+        ERR(self->logger,"ERROR SeparableConvolution: Copy problem.");
     }
 }
 
 // CUDA specific usage
-#include <cuda_runtime.h>
+
 void conv_with_stream(const struct SeparableConvolutionContext *self,cudaStream_t stream) {
     auto ws=static_cast<workspace*>(self->workspace);
     ws->stream=stream;
@@ -510,11 +525,11 @@ void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolu
             CASE(f32);
             //CASE(f64);
 #undef CASE
-            default: ERR(self->logger,"Unsupported input type");
+            default: EXCEPT("Unsupported input type");
         }
     } catch(const SeparableConvolutionError &e) {
-        ERR(self->logger,"CUDA: %s",e.what());
+        ERR(self->logger,e.what());
     } catch(...) {
-        ERR(self->logger,"CONV: Compute problem.");
+        ERR(self->logger,"ERROR SeparableConvolution: Compute problem.");
     }
 }

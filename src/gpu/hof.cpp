@@ -3,20 +3,22 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <exception>
 #include "gradientHist.h"
 #include "lk.h"
 
+#include <exception>
+#include <sstream>
+
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
-#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
-
 
 namespace priv {
 namespace hof {
 namespace gpu {
+    using namespace std;
 
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...); 
+
 
     struct workspace {
         workspace(logger_t logger,const struct HOFParameters& params) 

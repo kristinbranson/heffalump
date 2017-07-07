@@ -1,22 +1,24 @@
 #include "lk.h"
-#include <new>
-#include <stdexcept>
 #include <cuda_runtime.h>
 #include "conv.h"
 #include "absmax.h"
 #include <stdint.h> // uint64_t
+#include <sstream>  
+#include <stdexcept>
 
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
-#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
-#define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
-#define CUTRY_NOTHROW(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s",cudaGetErrorString(ecode));}} while(0)
+#define EXCEPT(...) throw priv::lk::gpu::LucasKanadeError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
+#define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
+#define CUTRY_NOTHROW(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {LOG(L,"CUDA: %s",cudaGetErrorString(ecode));}} while(0)
 
 #define CEIL(num,den) (((num)+(den)-1)/(den))
 
 namespace priv {
 namespace lk {
 namespace gpu {
+    using namespace std;
 
     using logger_t = void (*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
 
@@ -31,6 +33,38 @@ namespace gpu {
     using i64= int64_t;
     using f32=float;
     using f64=double;
+
+
+    struct LucasKanadeError: public std::exception {
+        template<typename... Args>
+        LucasKanadeError(const char* file,int line,const char* function,Args... args)
+            : file(file),function(function),msg(msg),line(line) {
+            stringstream ss;
+            ss<<"ERROR LucasKanadeError: ";
+            format(ss,args...);
+            ss<<"\n\t"<<file<<"("<<line<<"): "<<function<<"()";
+            string out=ss.str();
+            render.swap(out);
+        }
+        const char* what() const override {
+            return render.c_str();
+        }
+        string file,function,msg;
+        string render;
+        int line;
+
+    private:
+        template<typename T>
+        static void format(stringstream& ss,T t) {
+            ss<<t;
+        }
+
+        template<typename T,typename... Args>
+        static void format(stringstream& ss,T t,Args... args) {
+            ss<<t;
+            format(ss,args...);
+        }
+    };
 
     unsigned bytes_per_pixel(enum LucasKanadeScalarType type) {
         const unsigned bpp[]={1,2,4,8,1,2,4,8,4,8};
@@ -154,11 +188,11 @@ namespace gpu {
         , w(w), h(h), pitch(p)
         , params(params)
         {
-            CUTRY(logger,cudaMalloc(&out,bytesof_output()));
-            CUTRY(logger,cudaMalloc(&input,bytesof_input_storage()));
-            CUTRY(logger,cudaMalloc(&last,bytesof_input_storage()));
+            CUTRY(cudaMalloc(&out,bytesof_output()));
+            CUTRY(cudaMalloc(&input,bytesof_input_storage()));
+            CUTRY(cudaMalloc(&last,bytesof_input_storage()));
             
-            CUTRY(logger,cudaMemset(last,0,bytesof_input_storage()));
+            CUTRY(cudaMemset(last,0,bytesof_input_storage()));
 
             make_kernels();
 
@@ -169,13 +203,13 @@ namespace gpu {
                 stage1.dx=SeparableConvolutionInitialize(logger,w,h,p,ks,nks0);
                 stage1.dy=SeparableConvolutionInitialize(logger,w,h,p,ks,nks1);
             }
-            CUTRY(logger,cudaMalloc(&stage1.dt,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage1.dt,bytesof_intermediate()));
 
-            CUTRY(logger,cudaMalloc(&stage2.xx,bytesof_intermediate()));
-            CUTRY(logger,cudaMalloc(&stage2.xy,bytesof_intermediate()));
-            CUTRY(logger,cudaMalloc(&stage2.yy,bytesof_intermediate()));
-            CUTRY(logger,cudaMalloc(&stage2.xt,bytesof_intermediate()));
-            CUTRY(logger,cudaMalloc(&stage2.yt,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage2.xx,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage2.xy,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage2.yy,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage2.xt,bytesof_intermediate()));
+            CUTRY(cudaMalloc(&stage2.yt,bytesof_intermediate()));
 
             {
                 const float *ks[]={kernels.smoothing,kernels.smoothing};
@@ -191,14 +225,14 @@ namespace gpu {
             mdy.with_lower_bound(0.0f);
             mdt.with_lower_bound(0.0f);
 
-            CUTRY(logger,cudaEventCreate(&input_ready,cudaEventDisableTiming));
-            CUTRY(logger,cudaEventCreate(&stage1.x_done,cudaEventDisableTiming));
-            CUTRY(logger,cudaEventCreate(&stage1.y_done,cudaEventDisableTiming));
-            CUTRY(logger,cudaEventCreate(&stage1.t_done,cudaEventDisableTiming));
-            CUTRY(logger,cudaEventCreate(&stage3.done,cudaEventDisableTiming));
+            CUTRY(cudaEventCreate(&input_ready,cudaEventDisableTiming));
+            CUTRY(cudaEventCreate(&stage1.x_done,cudaEventDisableTiming));
+            CUTRY(cudaEventCreate(&stage1.y_done,cudaEventDisableTiming));
+            CUTRY(cudaEventCreate(&stage1.t_done,cudaEventDisableTiming));
+            CUTRY(cudaEventCreate(&stage3.done,cudaEventDisableTiming));
 
             for(int i=0;i<5;++i)
-                CUTRY(logger,cudaStreamCreateWithFlags(&streams[i],cudaStreamNonBlocking));
+                CUTRY(cudaStreamCreateWithFlags(&streams[i],cudaStreamNonBlocking));
 
             conv_with_stream(&stage1.dx,streams[0]);
             conv_with_stream(&stage1.dy,streams[1]);
@@ -247,17 +281,17 @@ namespace gpu {
                 SeparableConvolutionTeardown(&stage3.xt);
                 SeparableConvolutionTeardown(&stage3.yt);
 
-            } catch(const std::runtime_error& e) {
-                ERR(logger,"LK - %s",e.what());
+            } catch(const LucasKanadeError& e) {
+                ERR(logger,e.what());
             }
         }
 
         void compute(const void* im, enum LucasKanadeScalarType type) {
             try {
-                CUTRY(logger,cudaMemcpyAsync(input,im,bytesof_input(type),cudaMemcpyHostToDevice,streams[0]));
-                CUTRY(logger,cudaEventRecord(input_ready,streams[0]));
-                CUTRY(logger,cudaStreamWaitEvent(streams[1],input_ready,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[2],input_ready,0));
+                CUTRY(cudaMemcpyAsync(input,im,bytesof_input(type),cudaMemcpyHostToDevice,streams[0]));
+                CUTRY(cudaEventRecord(input_ready,streams[0]));
+                CUTRY(cudaStreamWaitEvent(streams[1],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[2],input_ready,0));
                 {
 
                     dim3 block(32,4);
@@ -274,10 +308,10 @@ namespace gpu {
 
                     // copy kernel uses vectorized load/stores
     #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
-                    CHECK(logger,aligned_to(input,16));// input must be aligned to float4 (16 bytes)
-                    CHECK(logger,aligned_to(last,16)); // output must be aligned to float4 (16 bytes)
+                    CHECK(aligned_to(input,16));// input must be aligned to float4 (16 bytes)
+                    CHECK(aligned_to(last,16)); // output must be aligned to float4 (16 bytes)
                     const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
-                    CHECK(logger,aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
+                    CHECK(aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
     #undef aligned_to
                     switch(type) {
                     #define CASE(T) case lk_##T: cpy_k<T><<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>((T*)last,(T*)input,pitch*h); break;
@@ -303,24 +337,24 @@ namespace gpu {
                 mdy.compute(stage1.dy.out,npx);
                 mdt.compute(stage1.dt,npx);
 
-                CUTRY(logger,cudaEventRecord(stage1.x_done,streams[0]));
-                CUTRY(logger,cudaEventRecord(stage1.y_done,streams[1]));
-                CUTRY(logger,cudaEventRecord(stage1.t_done,streams[2]));
+                CUTRY(cudaEventRecord(stage1.x_done,streams[0]));
+                CUTRY(cudaEventRecord(stage1.y_done,streams[1]));
+                CUTRY(cudaEventRecord(stage1.t_done,streams[2]));
 
                 // syncs to start stage 2
                 // for out=left*right
                 // left dependencies
-                CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.x_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.x_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.y_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[1],stage1.x_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[3],stage1.x_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[4],stage1.y_done,0));
                 // right dependencies
-                CUTRY(logger,cudaStreamWaitEvent(streams[0],stage1.x_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[1],stage1.y_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[2],stage1.y_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[3],stage1.t_done,0));
-                CUTRY(logger,cudaStreamWaitEvent(streams[4],stage1.t_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],stage1.x_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[1],stage1.y_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[2],stage1.y_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[3],stage1.t_done,0));
+                CUTRY(cudaStreamWaitEvent(streams[4],stage1.t_done,0));
 
                 {
                     dim3 block(32*4);
@@ -339,8 +373,8 @@ namespace gpu {
 
                 // make sure stage3 is done
                 for(int i=0;i<4;++i) {
-                    CUTRY(logger,cudaEventRecord(stage3.done,streams[i]));
-                    CUTRY(logger,cudaStreamWaitEvent(streams[i+1],stage3.done,0));
+                    CUTRY(cudaEventRecord(stage3.done,streams[i]));
+                    CUTRY(cudaStreamWaitEvent(streams[i+1],stage3.done,0));
                 }
 
     //            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
@@ -359,8 +393,8 @@ namespace gpu {
                         mdx.out,mdy.out,mdt.out,
                         n);
                 }
-            } catch(const std::runtime_error& e) {
-                ERR(logger,"LK - %s",e.what());
+            } catch(const LucasKanadeError& e) {
+                ERR(logger,e.what());
             }
         }
 
@@ -384,12 +418,12 @@ namespace gpu {
 
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
-                CUTRY(logger,cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-    //            CUTRY(logger,cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
-    //            CUTRY(logger,cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
-                CUTRY(logger,cudaStreamSynchronize(streams[4]));
-            } catch(const std::runtime_error& e) {
-                ERR(logger,"LK - %s",e.what());
+                CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+    //            CUTRY(cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
+    //            CUTRY(cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                CUTRY(cudaStreamSynchronize(streams[4]));
+            } catch(const LucasKanadeError& e) {
+                ERR(logger,e.what());
             }
         }
 
@@ -453,6 +487,7 @@ extern "C" struct LucasKanadeContext LucasKanadeInitialize(
     unsigned pitch,
     const struct LucasKanadeParameters params
 ){
+    using namespace priv::lk::gpu;
     struct LucasKanadeContext self={0};
     try {
         workspace *ws=new workspace(logger,w,h,pitch,params);        
@@ -461,7 +496,7 @@ extern "C" struct LucasKanadeContext LucasKanadeInitialize(
         self.h=h;
         self.result=ws->out;
         self.workspace=ws;
-    } catch(const std::runtime_error& e) {
+    } catch(const LucasKanadeError& e) {
         ERR(logger,"Problem initializing Lucas-Kanade context:\n\t%s",e.what());
     }
     return self;

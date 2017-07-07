@@ -11,22 +11,58 @@
 //  DEFINITIONS
 
 #include "gradientHist.h"
-#include <new>
-#include <stdexcept>
 #include <cuda_runtime.h>
+#include <stdexcept>
+#include <string>
+#include <sstream>
 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
-#define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
-#define CUTRY(L,e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR(L,"CUDA: %s\n\t%s",#e,cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#define EXCEPT(...) throw priv::gradient_histogram::gpu::GradientHistogramError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
+#define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
 #define CEIL(num,den) ((num+den-1)/den)
 
 namespace priv {      
 namespace gradient_histogram {
 namespace gpu {
+        using namespace std;
+
         struct workspace;
         using logger_t=void(*)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
         using alloc_t=void* (*)(size_t nbytes);
+
+        struct GradientHistogramError : public exception {
+            template<typename... Args>
+            GradientHistogramError(const char* file,int line,const char* function,Args... args)
+                : file(file),function(function),msg(msg),line(line) {
+                stringstream ss;
+                ss<<"ERROR GradientHistogram: ";
+                format(ss,args...);
+                ss<<"\n\t"<<file<<"("<<line<<"): "<<function<<"()";
+                string out=ss.str();
+                render.swap(out);
+            }
+            const char* what() const override {
+                return render.c_str();
+            }
+            string file,function,msg;
+            string render;
+            int line;
+
+        private:
+            template<typename T>
+            static void format(stringstream& ss,T t) {
+                ss<<t;
+            }
+
+            template<typename T,typename... Args>
+            static void format(stringstream& ss,T t,Args... args) {
+                ss<<t;
+                format(ss,args...);
+            }
+        };
+
 
         // TODO: does it make a difference whether I take these by reference or not?
         __device__ bool in_bounds(const int &x, const int &y,const int& w, const int& h) { return x>=0&&y>=0&&x<w&&y<h; }        
@@ -167,22 +203,22 @@ namespace gpu {
                 , params(*params) // grab a copy
                 , stream(nullptr)
             {
-                CUTRY(logger,cudaMalloc(&out,aligned_result_nbytes()));
-                CUTRY(logger,cudaMalloc(&dx,input_nbytes()));
-                CUTRY(logger,cudaMalloc(&dy,input_nbytes()));
-                CUTRY(logger,cudaMalloc(&mag,intermediate_image_nbytes()));
-                CUTRY(logger,cudaMalloc(&theta,intermediate_image_nbytes()));
+                CUTRY(cudaMalloc(&out,aligned_result_nbytes()));
+                CUTRY(cudaMalloc(&dx,input_nbytes()));
+                CUTRY(cudaMalloc(&dy,input_nbytes()));
+                CUTRY(cudaMalloc(&mag,intermediate_image_nbytes()));
+                CUTRY(cudaMalloc(&theta,intermediate_image_nbytes()));
             }
 
             ~workspace() {
                 try {
-                    CUTRY(logger,cudaFree(out));
-                    CUTRY(logger,cudaFree(dx));
-                    CUTRY(logger,cudaFree(dy));
-                    CUTRY(logger,cudaFree(mag));
-                    CUTRY(logger,cudaFree(theta));
-                } catch(const std::runtime_error& e) {
-                    ERR(logger,"GradientHistogram: %s",e.what());
+                    CUTRY(cudaFree(out));
+                    CUTRY(cudaFree(dx));
+                    CUTRY(cudaFree(dy));
+                    CUTRY(cudaFree(mag));
+                    CUTRY(cudaFree(theta));
+                } catch(const GradientHistogramError& e) {
+                    ERR(logger,e.what());
                 }
             }
 
@@ -216,27 +252,27 @@ namespace gpu {
                                                                 params.image.w,params.image.h,
                                                                 params.nbins,params.cell.w,params.cell.h);
                     }
-                } catch(const std::runtime_error &e) {
-                    ERR(logger,"GradienHistgram - Compute - %s",e.what());
+                } catch(const GradientHistogramError &e) {
+                    ERR(logger,e.what());
                 }
             }
 
             void copy_last_result(void *buf,size_t nbytes) const  {
                 try {
-                    CHECK(logger,result_nbytes()<=nbytes);
+                    CHECK(result_nbytes()<=nbytes);
 
-                    CUTRY(logger,cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    CUTRY(cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
     //                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
     //                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
-                    CUTRY(logger,cudaStreamSynchronize(stream));
-                } catch(const std::runtime_error &e) {
-                    ERR(logger,"GradienHistgram - Copy Last Result - %s",e.what());
+                    CUTRY(cudaStreamSynchronize(stream));
+                } catch(const GradientHistogramError &e) {
+                    ERR(logger,e.what());
                 }
             }
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const  {
-                CHECK(logger,params.cell.w>0);
-                CHECK(logger,params.cell.h>0);
+                CHECK(params.cell.w>0);
+                CHECK(params.cell.h>0);
                 shape[0]=CEIL(params.image.w,params.cell.w);
                 shape[1]=CEIL(params.image.h,params.cell.h);
                 shape[2]=params.nbins;
@@ -290,13 +326,16 @@ extern "C" {
     void GradientHistogramInit(struct gradientHistogram* self, 
                                const struct gradientHistogramParameters *param,
                                void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...)) {        
+        using namespace priv::gradient_histogram::gpu;
         self->workspace=nullptr;
         try {
             // Assert requirements
-            CHECK(logger,param->cell.w<param->image.w);
-            CHECK(logger,param->cell.h<param->image.h);
-            CHECK(logger,param->nbins>0); // code won't crash if nbins==0, but check for it anyway
-            self->workspace=new priv::gradient_histogram::gpu::workspace(param,logger);
+            CHECK(param->cell.w<param->image.w);
+            CHECK(param->cell.h<param->image.h);
+            CHECK(param->nbins>0); // code won't crash if nbins==0, but check for it anyway
+            self->workspace=new workspace(param,logger);
+        } catch(const GradientHistogramError &e) {
+            ERR(logger,e.what());
         }  catch(const std::bad_alloc& e) {
             ERR(logger,"Allocation failed: %s",e.what());
         } catch(...) {

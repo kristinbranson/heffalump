@@ -5,14 +5,48 @@
 #include <stdexcept>
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <sstream>
 
 #define ERR(...) logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
-#define CHECK(e) do{if(!(e)){ERR("Expression evaluated to false:\n\t%s",#e); throw std::runtime_error("check failed");}}while(0)
-#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {ERR("CUDA: %s",cudaGetErrorString(ecode)); throw std::runtime_error(cudaGetErrorString(ecode));}} while(0)
+#define EXCEPT(...) throw AbsMaxError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
+#define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
+#define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
 namespace priv {
 namespace absmax {
 namespace gpu {
+        using namespace std;
+
+        struct AbsMaxError : public exception {
+            template<typename T, typename... Args>
+            AbsMaxError(const char* file,int line,const char* function,T t,Args... args)
+            : file(file),function(function),msg(msg),line(line) {
+                stringstream ss;
+                ss << "AbsMax ERROR: "<<t;
+                format(ss,args...);
+                ss<<"\n\t"<<file<<"("<<line<<"): "<<function<<"()";
+                string out=ss.str();
+                render.swap(out);
+            }
+            const char* what() const override {
+                return render.c_str();
+            }
+            string file,function,msg;
+            string render;
+            int line;
+
+        private:
+            template<typename T>
+            static void format(stringstream& ss,T t) {
+                ss<<t;
+            }
+
+            template<typename T,typename... Args>
+            static void format(stringstream& ss,T t,Args... args) {
+                ss<<t;
+                format(ss,args...);
+            }
+    };
 
 __device__ float warpmax(float v) {
     // compute max across a warp
@@ -102,8 +136,8 @@ absmax_context_t::~absmax_context_t() {
     try {
         CUTRY(cudaFree(tmp));
         CUTRY(cudaFree(out));
-    } catch(const std::runtime_error& e) {
-        ERR("CUDA: %s",e.what());
+    } catch(const exception& e) {
+        ERR(e.what());
     }
 }
 
