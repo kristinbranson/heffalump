@@ -17,7 +17,7 @@ using namespace std;
 struct testparams {int w,h,kw,kh; SeparableConvolutionScalarType type;};
 // Tests will be constructed from combinations of these various sets
 static vector<testparams> sizes = {
-    //{0,     0,      0,    0,    conv_u8},
+    {0,     0,      0,    0,    conv_u8},
     {320,   240,    0,    0,    conv_u8},
     {12,    77,     0,    0,    conv_u8},
     {1,     1,      0,    0,    conv_u8},
@@ -40,6 +40,7 @@ static vector<testparams> kernel_sizes = {
     {0,     0,     10,    0,    conv_u8},
     {0,     0,     33,    0,    conv_u8},
     {0,     0,    100,    0,    conv_u8},
+    {0,     0,    200,    0,    conv_u8},
     {0,     0,      0,    1,    conv_u8},
     {0,     0,      0,   10,    conv_u8},
     {0,     0,      0,   33,    conv_u8},
@@ -58,7 +59,7 @@ size_t sizeof_type(SeparableConvolutionScalarType t) {
 
 static vector<testparams> make_tests() {
     vector<testparams> tests;    
-#if 0
+#if 1
     for(const auto& size:sizes)
     for(const auto& nks:kernel_sizes)
     for(const auto& type:types) {
@@ -70,7 +71,7 @@ static vector<testparams> make_tests() {
         tests.push_back(p); 
     }
 #else
-    tests.push_back({320,240,0,33,conv_u32});
+    tests.push_back({0,0,33,0,conv_u32});
 #endif
     return tests;
 }
@@ -130,11 +131,20 @@ string test_desc(const testparams& test) {
 // encode rules for expected parameter validation 
 // failures
 static bool expect_graceful_failure(const testparams& test) {
-    size_t required_alignment=16/sizeof_type(test.type);
+    int required_alignment=16/sizeof_type(test.type);
+    int apron_w=test.kw/2;
+    int aligned_apron_w=(required_alignment>0)?
+        (required_alignment*((apron_w+required_alignment-1)/required_alignment)) // ciel to payload
+        :1; 
     return 0
 #ifdef HEFFALUMP_TEST_gpu
-        || 32*required_alignment/4-(2*(test.kh/2)) >0 
-        ||test.type==conv_u64 // (gpu) 8-byte wide types unsupported
+        // (gpu) kernel width constraints
+        //       expressing these accurately is complicated
+        ||32*required_alignment/4<=2*(test.kh/2)
+        ||(test.kw>0 &&  32<=2*(test.kh/2))            // when kw>0, the non-unit-stride conv gets float as input
+        ||(32*required_alignment<=2*aligned_apron_w)   // kernel width limit
+        // (gpu) 8-byte wide types unsupported
+        ||test.type==conv_u64 
         ||test.type==conv_i64
         ||test.type==conv_f64
         // (gpu;conv_unit_stride) required alignment for row-stride, which is the width for these examples.
