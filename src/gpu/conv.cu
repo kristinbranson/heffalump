@@ -348,6 +348,7 @@ namespace gpu {
         #undef PAYLOAD
         const int A=(nk-1)/2;
         const int ny=th.z*32-2*A;
+        CHECK(ny>0);
         dim3 grid((w+31)/32,(h+ny-1)/ny,1);
 //        w=align_nelem<T>(w);
         conv_nonunit_stride_k<T><<<grid,th,0,stream>>>(out,in,w,h,pitch,k,nk);

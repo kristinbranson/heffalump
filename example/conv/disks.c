@@ -166,11 +166,12 @@ static void autocontrast(const float *out,int n) {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
-    float buf[25*2];
-    unsigned nks[]={15,15};
+#define K (33)
+    float buf[K*2];
+    unsigned nks[]={K,K};
     float* ks[]={
         gaussian_derivative(buf,nks[0],3.0f),
-        gaussian_derivative(&buf[25],nks[1],3.0f),
+        gaussian_derivative(&buf[K],nks[1],3.0f),
     };
     
     struct SeparableConvolutionContext ctx=SeparableConvolutionInitialize(logger,W,H,W,ks,nks);

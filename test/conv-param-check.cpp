@@ -17,7 +17,7 @@ using namespace std;
 struct testparams {int w,h,kw,kh; SeparableConvolutionScalarType type;};
 // Tests will be constructed from combinations of these various sets
 static vector<testparams> sizes = {
-    {0,     0,      0,    0,    conv_u8},
+    //{0,     0,      0,    0,    conv_u8},
     {320,   240,    0,    0,    conv_u8},
     {12,    77,     0,    0,    conv_u8},
     {1,     1,      0,    0,    conv_u8},
@@ -37,14 +37,17 @@ static vector<testparams> types = {
 };
 static vector<testparams> kernel_sizes = {
     {0,     0,      1,    0,    conv_u8},
-    {0,     0,      10,   0,    conv_u8},
-    //{0,     0,      if(nkernel[0]) 100,  0,    conv_u8},
+    {0,     0,     10,    0,    conv_u8},
+    {0,     0,     33,    0,    conv_u8},
+    {0,     0,    100,    0,    conv_u8},
     {0,     0,      0,    1,    conv_u8},
     {0,     0,      0,   10,    conv_u8},
-    //{0,     0,      0,  100,    conv_u8},
+    {0,     0,      0,   33,    conv_u8},
+    {0,     0,      0,  100,    conv_u8},
     {0,     0,      1,    1,    conv_u8},
     {0,     0,     10,   10,    conv_u8},    
-    //{0,     0,    100,  100,    conv_u8},
+    {0,     0,     33,   33,    conv_u8},    
+    {0,     0,    100,  100,    conv_u8},
     {0,     0,      9,    9,    conv_u8},
 };
 
@@ -55,7 +58,7 @@ size_t sizeof_type(SeparableConvolutionScalarType t) {
 
 static vector<testparams> make_tests() {
     vector<testparams> tests;    
-#if 1
+#if 0
     for(const auto& size:sizes)
     for(const auto& nks:kernel_sizes)
     for(const auto& type:types) {
@@ -67,7 +70,7 @@ static vector<testparams> make_tests() {
         tests.push_back(p); 
     }
 #else
-    tests.push_back({1345,1829,0,1,conv_u8});
+    tests.push_back({320,240,0,33,conv_u32});
 #endif
     return tests;
 }
@@ -130,6 +133,7 @@ static bool expect_graceful_failure(const testparams& test) {
     size_t required_alignment=16/sizeof_type(test.type);
     return 0
 #ifdef HEFFALUMP_TEST_gpu
+        || 32*required_alignment/4-(2*(test.kh/2)) >0 
         ||test.type==conv_u64 // (gpu) 8-byte wide types unsupported
         ||test.type==conv_i64
         ||test.type==conv_f64
