@@ -8,6 +8,7 @@ foreach(arch
         lk-param-check
         hog-param-check
         hof-param-check
+        hog-output-size
     )
         set(tgt ${label}-${arch})
         add_executable(${tgt} ${label}.cpp)

@@ -152,6 +152,6 @@ void HOGOutputShape(const struct HOGContext *self,struct HOGFeatureDims *shape) 
                 .y=self->h/self->params.cell.h,
                 .bin=self->params.nbins
         };
-    }
-    *shape=(struct HOGFeatureDims) { 0,0,0 };
+    } else 
+        *shape=(struct HOGFeatureDims) { 0,0,0 };
 }
