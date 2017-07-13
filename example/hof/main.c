@@ -163,7 +163,7 @@ int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
     struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.w=W,.h=H,.pitch=W}, // need this to reserve memory for 1 time point
-        .cell={8,8},.nbins=8};
+        .cell={17,17},.nbins=8};
     struct HOFContext ctx=HOFInitialize(logger,params);
     size_t nbytes=HOFOutputByteCount(&ctx);
     float* out=(float*) malloc(nbytes);

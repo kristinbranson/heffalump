@@ -172,5 +172,6 @@ void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) 
             .bin=self->params.nbins
         };
     }
-    *shape=(struct HOGFeatureDims) { 0,0,0 };
+    else
+        *shape=(struct HOGFeatureDims) { 0,0,0 };
 }

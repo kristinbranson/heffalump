@@ -15,7 +15,6 @@
 
 using namespace std;
 
-
 // aliasing the standard scalar types simplifies
 // the mapping of type id's to types. See SeparableConvolution().
 using u8 =uint8_t;
@@ -90,6 +89,7 @@ namespace gpu {
         workspace(logger_t logger, const float **ks,const unsigned *nks,unsigned w,unsigned h,unsigned p)
         : logger(logger)
         , stream(nullptr) 
+        , last_elapsed_ms(0)
         {
             nkernel[0]=nks[0]+(nks[0]?!(nks[0]&1):0); // pad to odd value if necessary - later code assumes odd
             nkernel[1]=nks[1]+(nks[1]?!(nks[1]&1):0);

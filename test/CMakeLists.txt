@@ -9,6 +9,7 @@ foreach(arch
         hog-param-check
         hof-param-check
         hog-output-size
+        hof-output-size
     )
         set(tgt ${label}-${arch})
         add_executable(${tgt} ${label}.cpp)

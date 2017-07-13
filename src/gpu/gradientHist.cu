@@ -22,6 +22,7 @@
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
 #define CEIL(num,den) ((num+den-1)/den)
+#define FLOOR(num,den) ((num)/(den))
 
 namespace priv {      
 namespace gradient_histogram {
@@ -153,8 +154,8 @@ namespace gpu {
                 const float dx=(rx-celli*cellw+0.5f)/float(cellw)-0.5f;
                 const float dy=(ry-cellj*cellh+0.5f)/float(cellh)-0.5f;
                 
-                const int ncellh=CEIL(h,cellh);
-                const int ncellw=CEIL(w,cellw);                
+                const int ncellh=FLOOR(h,cellh);
+                const int ncellw=FLOOR(w,cellw);                
                 const int binpitch=ncellw*ncellh;
                 const int neighborx=dx<0.0f?-1:1;
                 const int stepy=dy<0.0f?-1:1;
@@ -273,8 +274,8 @@ namespace gpu {
             void output_shape(unsigned shape[3],unsigned strides[4]) const  {
                 CHECK(params.cell.w>0);
                 CHECK(params.cell.h>0);
-                shape[0]=CEIL(params.image.w,params.cell.w);
-                shape[1]=CEIL(params.image.h,params.cell.h);
+                shape[0]=FLOOR(params.image.w,params.cell.w);
+                shape[1]=FLOOR(params.image.h,params.cell.h);
                 shape[2]=params.nbins;
 
                 strides[0]=1;
