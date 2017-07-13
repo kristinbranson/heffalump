@@ -12,11 +12,13 @@
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>   // vsprintf, sprintf
-#include <windows.h> // OutputDebugString
 #include "tictoc.h"
 #include <hof.h>
 #include <math.h>    // fminf, fmaxf
 #include <float.h>   // FLT_MAX
+#include <string.h>  // memset
+#include <stdlib.h>  // malloc
+#include <stdarg.h> 
 
 #define NREPS (5000)
 
@@ -33,7 +35,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 #else
     sprintf(buf2,"%s\n",buf1);
 #endif
-    OutputDebugStringA(buf2);
+    puts(buf2);
 }
 
 static void* disk(double time) {    
@@ -110,8 +112,7 @@ static void* disk(double time) {
     return buf; // returns u8 image
 }
 
-                                                                 
-int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
+int main(int argc,char** argv) {                                                                 
     struct HOFParameters params={
         .lk={.sigma={.derivative=1,.smoothing=3}},
         .input={.w=256,.h=256,.pitch=256},

@@ -15,6 +15,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <sstream>
+#include <float.h> // FLT_MAX
 
 #define ERR(...) logger(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define EXCEPT(...) throw AbsMaxError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
@@ -37,7 +38,7 @@ namespace gpu {
                 string out=ss.str();
                 render.swap(out);
             }
-            const char* what() const override {
+            const char* what() const noexcept override {
                 return render.c_str();
             }
             string file,function,msg;

@@ -10,6 +10,8 @@
 #ifndef H_NGC_CONV
 #define H_NGC_CONV
 
+#include <stdlib.h> // size_t
+
 #ifdef __cplusplus
 extern "C" {
 #endif

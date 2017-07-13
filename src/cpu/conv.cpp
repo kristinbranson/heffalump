@@ -7,11 +7,14 @@
 //
 //       http://www.apache.org/licenses/LICENSE-2.0
 
+#ifdef _MSC_VER
+// For leak checking
 #define _CRTDBG_MAPALLOC
 #include <crtdbg.h>
 #ifdef _DEBUG
 #define DEBUG_NEW new(_NORMAL_BLOCK, __FILE__, __LINE__)
 #define new DEBUG_NEW
+#endif
 #endif
 
 #include "../conv.h"
@@ -45,8 +48,6 @@ namespace priv {
 namespace conv {
 namespace cpu {
 
-    // TODO: unit vs non-unit strides
-    // TODO: test with images thinner than kernel width
     /// 1d convolution
     /// Not in place
     /// Clamp-to-edge boundary condition
@@ -170,6 +171,27 @@ namespace cpu {
             *o=S(*i);
     }
 
+    struct workspace {
+        workspace(const float **ks, const unsigned *nks,unsigned nscratch) {
+            scratch=new float[nscratch];
+            // allocating kernels this way handles having
+            // nkernel[0]==0 or  nkernel[1]==0
+            kernel[0]=new float[nks[0]+nks[1]];
+            kernel[1]=kernel[0]+nks[0];
+            nkernel[0]=nks[0];
+            nkernel[1]=nks[1];
+            if(nkernel[0]) memcpy(kernel[0],ks[0],nks[0]*sizeof(float));
+            if(nkernel[1]) memcpy(kernel[1],ks[1],nks[1]*sizeof(float));
+        }
+        ~workspace() {
+            delete [] scratch;
+            delete [] kernel[0];
+        }
+    
+        float *scratch;
+        float *kernel[2];
+        unsigned nkernel[2];
+    };
 
     /// Separable convolution
     /// If nk==0 for a dimension, just copies that dimension
@@ -177,7 +199,7 @@ namespace cpu {
         using pitch_t=decltype(self->pitch);
         using sz_t=decltype(self->w);
 
-        struct workspace *ws=static_cast<struct workspace *>(self->workspace);
+        workspace *ws=static_cast<workspace *>(self->workspace);
 
 
         auto * const out=self->out;        
@@ -216,27 +238,6 @@ namespace cpu {
         }
     }
 
-    struct workspace {
-        workspace(const float **ks, const unsigned *nks,unsigned nscratch) {
-            scratch=new float[nscratch];
-            // allocating kernels this way handles having
-            // nkernel[0]==0 or  nkernel[1]==0
-            kernel[0]=new float[nks[0]+nks[1]];
-            kernel[1]=kernel[0]+nks[0];
-            nkernel[0]=nks[0];
-            nkernel[1]=nks[1];
-            if(nkernel[0]) memcpy(kernel[0],ks[0],nks[0]*sizeof(float));
-            if(nkernel[1]) memcpy(kernel[1],ks[1],nks[1]*sizeof(float));
-        }
-        ~workspace() {
-            delete [] scratch;
-            delete [] kernel[0];
-        }
-    
-        float *scratch;
-        float *kernel[2];
-        unsigned nkernel[2];
-    };
 }}} // end priv::conv::cpu
 
 struct SeparableConvolutionContext SeparableConvolutionInitialize(

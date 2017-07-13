@@ -7,8 +7,12 @@
 //
 //       http://www.apache.org/licenses/LICENSE-2.0
 
+#ifdef _MSC_VER
+// for leak checking
 #define _CRTDBG_MAPALLOC
 #include <crtdbg.h>
+#endif
+
 #include "../lk.h"
 #include <stdlib.h>
 #include <math.h>
@@ -46,7 +50,7 @@ static float* gaussian(float *k,int n,float sigma) {
     const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
     const float s2=sigma*sigma;
     const float c=(n-1)/2.0f;
-    for(auto i=0;i<n;++i) {
+    for(int i=0;i<n;++i) {
         float r=i-c;
         k[i]=norm*expf(-0.5f*r*r/s2);
     }
@@ -57,7 +61,7 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
     const float s2=sigma*sigma;
     const float c=(n-1)/2.0f;
-    for(auto i=0;i<n;++i) {
+    for(int i=0;i<n;++i) {
         float r=i-c;
         float g=norm*expf(-0.5f*r*r/s2);
         k[i]=-g*r/s2;
@@ -107,8 +111,8 @@ static struct workspace* workspace_create(
     self->last=data+c;
 
     {
-        float *ks[]={self->kernels.smoothing,self->kernels.smoothing};
-        unsigned nks[]={self->kernels.nsmooth,self->kernels.nsmooth};
+        const float *ks[]={self->kernels.smoothing,self->kernels.smoothing};
+        const unsigned nks[]={self->kernels.nsmooth,self->kernels.nsmooth};
         self->smooth=SeparableConvolutionInitialize(logger,w,h,w,ks,nks);
     }
     {
@@ -118,9 +122,9 @@ static struct workspace* workspace_create(
         unsigned nks0[]={3,0};
         unsigned nks1[]={0,3};
 #else        
-        float *ks[]={self->kernels.derivative,self->kernels.derivative};
-        unsigned nks0[]={self->kernels.nder,0};
-        unsigned nks1[]={0,self->kernels.nder};
+        const float *ks[]={self->kernels.derivative,self->kernels.derivative};
+        const unsigned nks0[]={self->kernels.nder,0};
+        const unsigned nks1[]={0,self->kernels.nder};
 #endif
         self->dx=SeparableConvolutionInitialize(logger,w,h,w,ks,nks0);
         self->dy=SeparableConvolutionInitialize(logger,w,h,w,ks,nks1);

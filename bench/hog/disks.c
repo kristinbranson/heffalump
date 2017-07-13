@@ -11,10 +11,12 @@
 // Start a window and show a test greyscale image
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
-#include <windows.h>
 #include "tictoc.h"
 #include <hog.h>
 #include <math.h>
+#include <stdarg.h>
+#include <string.h> //memset
+#include <stdlib.h> //malloc
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -29,7 +31,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 #else
     sprintf(buf2,"%s\n",buf1);
 #endif
-    OutputDebugStringA(buf2);
+    puts(buf2);
 }
 
 static void* disk(double time) {
@@ -118,7 +120,7 @@ static void* disk(double time) {
 
 #define NREPS (1000)
 
-int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {
+int main(int argc,char**argv) {
     struct HOGParameters params={.cell={16,16},.nbins=8};
     struct HOGContext ctx=
         HOGInitialize(logger,params,256,256);

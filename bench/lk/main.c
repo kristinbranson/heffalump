@@ -15,8 +15,8 @@
 #include <lk.h>
 #include <math.h>
 #include <stdarg.h>  // vararg utils
-#include <windows.h> // OutputDebugStringA
 #include <float.h>
+#include <string.h> // memset
 
 #define NREPS (5000)
 
@@ -33,7 +33,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 #else
     sprintf(buf2,"%s\n",buf1);
 #endif
-    OutputDebugStringA(buf2);
+    puts(buf2);
 }
 
 static char* delta() {
@@ -124,7 +124,7 @@ static void* disk(double time) {
     return buf;
 }
 
-int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {  
+int main(int argc,char**argv) {
     struct LucasKanadeParameters params={
         .sigma={
             .derivative=1.0, // This is something like the edge scale 

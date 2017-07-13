@@ -11,9 +11,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <math.h>
-#include <windows.h>
 #include "tictoc.h"
 #include <conv.h>
+#include <stdarg.h>
+#include <string.h> // memset
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 
@@ -31,7 +32,7 @@ static void logger(int is_error,const char *file,int line,const char* function,c
 #else
     sprintf(buf2,"%s\n",buf1);
 #endif
-    OutputDebugStringA(buf2);
+    puts(buf2);
 }
 
 static char* delta() {
@@ -48,7 +49,7 @@ static float* gaussian(float *k,int n,float sigma) {
     const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
     const float s2=sigma*sigma;
     const float c=(n-1)/2.0f;
-    for(auto i=0;i<n;++i) {
+    for(int i=0;i<n;++i) {
         float r=i-c;
         k[i]=norm*expf(-0.5f*r*r/s2);
     }
@@ -59,7 +60,7 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
     const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
     const float s2=sigma*sigma;
     const float c=(n-1)/2.0f;
-    for(auto i=0;i<n;++i) {
+    for(int i=0;i<n;++i) {
         float r=i-c;
         float g=norm*expf(-0.5f*r*r/s2);
         k[i]=-g*r/s2;
@@ -69,10 +70,10 @@ static float* gaussian_derivative(float *k,int n,float sigma) {
 
 float conv_last_elapsed_ms(const struct SeparableConvolutionContext* self);
 
-int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
+int main(int argc,char**argv) {
     float buf[50*2];
-    unsigned nks[]={3,3};
-    float* ks[]={
+    const unsigned nks[]={3,3};
+    const float* ks[]={
         gaussian_derivative(buf,nks[0],3.0f),
         gaussian_derivative(&buf[50],nks[1],3.0f),
     };

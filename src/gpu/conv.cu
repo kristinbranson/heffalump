@@ -54,7 +54,7 @@ namespace gpu {
             string out=ss.str();
             render.swap(out);
         }
-        const char* what() const override {
+        const char* what() const noexcept override {
             return render.c_str();
         }
         string file,function,msg;
