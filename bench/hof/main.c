@@ -18,7 +18,7 @@
 #include <math.h>    // fminf, fmaxf
 #include <float.h>   // FLT_MAX
 
-#define NREPS (1)
+#define NREPS (5000)
 
 #define LOG(...) logger(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 

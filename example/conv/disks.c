@@ -175,7 +175,7 @@ static void autocontrast(const float *out,int n) {
 }
 
 int WinMain(HINSTANCE hinst, HINSTANCE hprev, LPSTR cmd, int show) {    
-#define K (33)
+#define K (31)
     float buf[K*2];
     unsigned nks[]={K,K};
     float* ks[]={
