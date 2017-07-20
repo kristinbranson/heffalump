@@ -30,7 +30,7 @@ namespace gpu {
         struct AbsMaxError : public exception {
             template<typename T, typename... Args>
             AbsMaxError(const char* file,int line,const char* function,T t,Args... args)
-            : file(file),function(function),msg(msg),line(line) {
+            : file(file),function(function),line(line) {
                 stringstream ss;
                 ss << "AbsMax ERROR: "<<t;
                 format(ss,args...);
@@ -41,7 +41,7 @@ namespace gpu {
             const char* what() const noexcept override {
                 return render.c_str();
             }
-            string file,function,msg;
+            string file,function;
             string render;
             int line;
 

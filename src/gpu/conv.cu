@@ -46,7 +46,7 @@ namespace gpu {
     struct SeparableConvolutionError: public exception {
         template<typename... Args>
         SeparableConvolutionError(const char* file,int line,const char* function,Args... args)
-            : file(file),function(function),msg(msg),line(line) {
+            : file(file),function(function),line(line) {
             stringstream ss;
             ss<<"ERROR SeparableConvolution: ";
             format(ss,args...);
@@ -57,7 +57,7 @@ namespace gpu {
         const char* what() const noexcept override {
             return render.c_str();
         }
-        string file,function,msg;
+        string file,function;
         string render;
         int line;
 
