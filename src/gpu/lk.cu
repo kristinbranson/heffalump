@@ -23,6 +23,10 @@
 
 #define CEIL(num,den) (((num)+(den)-1)/(den))
 
+#ifdef _MSC_VER
+#define noexcept
+#endif
+
 namespace priv {
 namespace lk {
 namespace gpu {

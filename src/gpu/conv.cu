@@ -16,11 +16,14 @@
 #include <string>
 #include <sstream>
 
-
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define EXCEPT(...) throw priv::conv::gpu::SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
+
+#ifdef _MSC_VER
+#define noexcept
+#endif
 
 using namespace std;
 

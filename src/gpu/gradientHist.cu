@@ -33,6 +33,10 @@
 #define CEIL(num,den) ((num+den-1)/den)
 #define FLOOR(num,den) ((num)/(den))
 
+#ifdef _MSC_VER
+#define noexcept
+#endif
+
 namespace priv {      
 namespace gradient_histogram {
 namespace gpu {
