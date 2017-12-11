@@ -42,7 +42,7 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     CHECK(self->logger,self->params.nbins>0);
     const int w=self->w,h=self->h;
     struct workspace* ws=malloc(sizeof(struct workspace));
-    const float k[3]={-1,0,1},*ks[]={k,k};
+    const float k[3]={-0.5,0,0.5},*ks[]={k,k};
     const unsigned nkx[]={3,0},nky[]={0,3};    
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
@@ -53,7 +53,8 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
         .image={ .w=self->w,
                  .h=self->h,
                  .pitch=self->w}, // FIXME: need the real input pitch here
-        .nbins=self->params.nbins
+        .nbins=self->params.nbins,
+        .hog_bin =1
     };
     GradientHistogramInit(&ws->gh,&params,self->logger);
     return ws;

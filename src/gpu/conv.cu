@@ -15,7 +15,7 @@
 
 #include <string>
 #include <sstream>
-
+#include <iostream>
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define EXCEPT(...) throw priv::conv::gpu::SeparableConvolutionError(__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
@@ -286,8 +286,8 @@ namespace gpu {
         const int P=PAYLOAD*((A+PAYLOAD-1)/PAYLOAD);   // aligned apron size (elems): eg for u16, PAYLOAD=8 - nk|P :: 3|8, 9|8, 19|16
         const int nx=BW*PAYLOAD-2*P;                   // the number of evaluable x items.
         const int x=blockIdx.x*nx;                     // The output location for the line
-        const int bx=(nx<(w-x))?nx:(w-x);              // number of x's to output in the line
-
+        const int bx=(nx<(w-x))?nx:(w-x);             // number of x's to output in the line
+        
         // Load        
         {
             const int x0=(x-P)+threadIdx.x*PAYLOAD;  // location to load

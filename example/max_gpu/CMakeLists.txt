@@ -8,5 +8,6 @@
 #       http://www.apache.org/licenses/LICENSE-2.0
 
 set(tgt max_gpu)
-cuda_add_executable(${tgt} WIN32 max.cu)
+#cuda_add_executable(${tgt} WIN32 max.cu)
+CUDA_ADD_EXECUTABLE(${tgt} max.cu WIN32)
 set_target_properties(${tgt} PROPERTIES FOLDER examples)

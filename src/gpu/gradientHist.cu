@@ -88,14 +88,28 @@ namespace gpu {
             const float * __restrict__ dx,
             const float * __restrict__ dy,
             int w,int h, int p,
-            int nbins) 
+            int nbins, int hog_bin) 
         {
             const int ix=threadIdx.x+blockIdx.x*blockDim.x;
             const int iy=threadIdx.y+blockIdx.y*blockDim.y;
             if(ix<w && iy<h) {
                 const float x=dx[ix+iy*p];
                 const float y=dy[ix+iy*p];
-                theta_bin[ix+iy*w]=nbins*fpartf((0.15915494309f*atan2f(y,x))+0.5f); // angle is mapped to bins
+                float theta = atan2f(y,x);
+
+                // if hog wrap around the theta values between 0 to pi - //rutuja
+               if((hog_bin) && (theta < 0)){
+                   theta = theta + 3.141592653589f;
+                }else{
+                   theta = theta/2 + 3.141592653589f;
+                }
+
+                // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
+                //if(hog_bin){
+                theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta);
+                //}else{
+                  // theta_bin[ix+iy*w]=nbins*fpartf((0.15915494309f*theta)+0.5f); // angle is mapped to bins
+                //}
                 mag[ix+iy*w]=sqrtf(x*x+y*y);
             }
         }
@@ -153,7 +167,7 @@ namespace gpu {
             int cellw, int cellh) 
         {            
             // current input sample position
-            const int rx=threadIdx.x+blockIdx.x*blockDim.x;;
+            const int rx=threadIdx.x+blockIdx.x*blockDim.x;
             const int ry=threadIdx.y+blockIdx.y*blockDim.y;
 
             if(in_bounds(rx,ry,w,h)) {
@@ -170,41 +184,76 @@ namespace gpu {
                 const int ncellh=FLOOR(h,cellh);
                 const int ncellw=FLOOR(w,cellw);                
                 const int binpitch=ncellw*ncellh;
-                const int neighborx=dx<0.0f?-1:1;
-                const int stepy=dy<0.0f?-1:1;
-                const int neighbory=stepy*ncellw;
-                const int cellidx=celli+cellj*ncellw;
+                
+                //const int neighborx=dx<0.0f?-1:1;
+                //const int stepy=dy<0.0f?-1:1;
+                //const int neighbory=stepy*ncellw;
+                const int neighbory=dy<0.0f?-1:1;
+                const int stepx=dx<0.0f?-1:1;
+                const int neighborx=stepx*ncellh;
+                const int cellidx=cellj+celli*ncellw; // swapped celli and cellj to match matlab row major indexing-rutuja
 #if 0
-                // Useful for checking normalization
+                //Useful for checking normalization
                 const int th=0.0f;
                 const float m=1.0f;
 #else
                 const int th=theta_bins[rx+ry*w];
                 const float m=mag[rx+ry*w];
+                const float mth=fpartf(theta_bins[rx+ry*w]);
 #endif
                 
-                float *b=out+binpitch*th+cellidx;
-                const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
-                const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
+               // const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
+               // const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
+               const bool inx=(0<=(neighbory+cellj)&&(neighbory+cellj)<ncellh);                
+               const bool iny=(0<=(stepx+celli)&&(stepx+celli)<ncellw);
 
+                //float *b=out+(binpitch*th)+cellidx;
                 const float mx=fabsf(dx);
                 const float my=fabsf(dy);
-                const float
+                /*const float
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
                     c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);*/
+                const float 
+                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(cellj          ,celli      ,ncellw,ncellh,cellw,cellh),
+                    c01=m*(1.0f-mx)*      my *cellnorm(cellj          ,celli+stepx,ncellw,ncellh,cellw,cellh),
+                    c10=m*      mx *(1.0f-my)*cellnorm(cellj+neighbory,celli      ,ncellw,ncellh,cellw,cellh),
+                    c11=m*      mx *      my *cellnorm(cellj+neighbory,celli+stepx,ncellw,ncellh,cellw,cellh);
 
 #if 0                
                 // For benchmarking to check the cost of using the atomics.
                 // write  something out just to force the optimizer not to 
                 // remove the calculation
+                float *b=out+(binpitch*th)+cellidx;
                 *b=c00+c01+c10+c11;
 #else
-                atomicAdd(b,c00);
-                if(inx&iny) atomicAdd(b+neighborx+neighbory,c11);
+                //atomicAdd(b,c00);
+                /*if(inx&iny) atomicAdd(b+neighborx+neighbory,c11);
                 if(iny) atomicAdd(b+neighbory,c01);
-                if(inx) atomicAdd(b+neighborx,c10);
+                if(inx) atomicAdd(b+neighborx,c10);*/
+               /* if(inx&iny) atomicAdd(b+neighbory+neighborx,c11);
+                if(iny) atomicAdd(b+neighborx,c01);
+                if(inx) atomicAdd(b+neighbory,c10);*/
+
+                {
+                    float * const b=out+binpitch*th+cellidx;
+                    atomicAdd(b,(1-mth)*c00);
+                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
+                    if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
+                    if(inx) atomicAdd(b+neighbory,(1-mth)*c10);
+                }
+    
+                {
+                    const int thn=((th+1)>=nbins)?0:(th+1);
+                    float * const b=out+binpitch*thn+cellidx;
+                    atomicAdd(b,(mth)*c00);
+                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
+                    if(iny) atomicAdd(b+neighborx,(mth)*c01);
+                    if(inx) atomicAdd(b+neighbory,(mth)*c10);
+                }
+
+
 #endif
                 
             }
@@ -249,7 +298,8 @@ namespace gpu {
                             CEIL(params.image.h,block.y));
                         oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
                                                                         params.image.w,params.image.h,
-                                                                        params.image.pitch,params.nbins);
+                                                                        params.image.pitch,params.nbins,
+                                                                        params.hog_bin);
                     }
                     {
                         // This is vectorized using float4's.
@@ -274,15 +324,40 @@ namespace gpu {
             void copy_last_result(void *buf,size_t nbytes) const  {
                 try {
                     CHECK(result_nbytes()<=nbytes);
-
+                    //original
                     CUTRY(cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
-    //                CUTRY(logger,cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
-    //                CUTRY(logger,cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+
                     CUTRY(cudaStreamSynchronize(stream));
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
                 }
             }
+
+
+           //rutuja - added
+            void copy_last_magnitude(void *buf,size_t nbytes) const  {
+                try {
+                    CHECK(intermediate_image_nbytes()<=nbytes);
+                    //original
+                    CUTRY(cudaMemcpyAsync(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    CUTRY(cudaStreamSynchronize(stream));
+                } catch(const GradientHistogramError &e) {
+                    ERR(logger,e.what());
+                }
+            }
+
+             //rutuja - added
+            void copy_last_orientation(void *buf,size_t nbytes) const  {
+                try {
+                    CHECK(intermediate_image_nbytes()<=nbytes);
+                    //original
+                    CUTRY(cudaMemcpyAsync(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    CUTRY(cudaStreamSynchronize(stream));
+                } catch(const GradientHistogramError &e) {
+                    ERR(logger,e.what());
+                }
+            }
+
 
             void output_shape(unsigned shape[3],unsigned strides[4]) const  {
                 CHECK(params.cell.w>0);
@@ -364,8 +439,7 @@ extern "C" {
     }
 
     /// Computes the gradient histogram given dx and dy.
-    ///
-    /// dx and dy are float images with the same memory layout.
+    ///   /// dx and dy are float images with the same memory layout.
     /// dx represents the gradient in x
     /// dy represents the gradient in y
     /// 
@@ -400,6 +474,33 @@ extern "C" {
         if(!self||!self->workspace) return;
         WORKSPACE->copy_last_result(buf,nbytes);
     }
+
+
+    //rutuja - Utility functions to copy the magnitude and orientations from the gpu
+    size_t GradientMagnitudeOutputByteCount(const struct gradientHistogram *self) {
+        if(!self||!self->workspace) return 0;
+        return WORKSPACE->intermediate_image_nbytes();
+    }
+
+
+    void GradientMagnitudeCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes) {
+        if(!self||!self->workspace) return;
+        WORKSPACE->copy_last_magnitude(buf,nbytes);
+    }
+
+
+    size_t GradientOrientationOutputByteCount(const struct gradientHistogram *self) {
+        if(!self||!self->workspace) return 0;
+        return WORKSPACE->intermediate_image_nbytes();
+    }
+
+
+    void GradientOrientationCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes) {
+        if(!self||!self->workspace) return;
+        WORKSPACE->copy_last_orientation(buf,nbytes);
+    }
+
+
 
     /// shape and strides are returned in units of float elements.
     ///

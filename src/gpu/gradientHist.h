@@ -19,6 +19,7 @@ extern "C"{
     struct gradientHistogramParameters {
         struct { unsigned w,h; } cell;
         struct { unsigned w,h,pitch; } image;
+        int hog_bin; //flag to bin hog between 0 tp pi-rutuja
         int nbins;
     };
 
@@ -61,6 +62,15 @@ extern "C"{
     ///
     /// The last size is the total number of elements in the volume.
     void GradientHistogramOutputShape(const struct gradientHistogram *self,unsigned shape[3],unsigned strides[4]);
+
+    //rutuja  - @returns The number of bytes required for the buffer passed to `GradientMagnitudeCopyLastResult`.
+    size_t GradientMagnitudeOutputByteCount(const struct gradientHistogram *self);
+    //rutuja - @returns The number of bytes required for the buffer passed to `GradientMagnitudeCopyLastResult`.
+    size_t GradientOrientationOutputByteCount(const struct gradientHistogram *self);
+
+    //rutuja 
+    void GradientMagnitudeCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes);
+    void GradientOrientationCopyLastResult(const struct gradientHistogram *self,void *buf,size_t nbytes);
 
 #ifdef __cplusplus
 }

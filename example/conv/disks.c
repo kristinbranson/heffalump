@@ -1,5 +1,5 @@
-//   Copyright 2017 Vidrio Technologies
-//   by Nathan Clack <nathan@vidriotech.com>
+:q//   Copyright 2017 Vidrio Technologies
+/   by Nathan Clack <nathan@vidriotech.com>
 //
 //   Licensed under the Apache License, Version 2.0 (the "License");
 //   you may not use this file except in compliance with the License.

@@ -15,17 +15,26 @@ include(CMakeToolsHelpers OPTIONAL)
 find_package(CUDA)
 CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Common)
 list(APPEND CUDA_NVCC_FLAGS ${ARCH_FLAGS})
-IF(NOT WIN32)
-set(CUDA_HOST_FLAGS "-Xcompiler -fPIC -std=c++11")
-ENDIF()
-set(CUDA_NVCC_FLAGS_DEBUG          "${CUDA_FPIC_FLAGS}-g;-G" CACHE STRING "" FORCE)
-set(CUDA_NVCC_FLAGS_RELEASE        "${CUDA_FPIC_FLAGS}--use_fast_math" CACHE STRING "" FORCE)
-set(CUDA_NVCC_FLAGS_RELWITHDEBINFO "${CUDA_FPIC_FLAGS}--use_fast_math;-g;-lineinfo" CACHE STRING "" FORCE)
-set(CUDA_NVCC_FLAGS_MINSIZEREL     "${CUDA_FPIC_FLAGS}--use_fast_math" CACHE STRING "" FORCE)
 
-message("CUDA_HOST_FLAGS is ${CUDA_HOST_FLAGS}")
-message("CUDA_NVCC_FLAGS_RELEASE is ${CUDA_NVCC_FLAGS_RELEASE}")
+## stuff added by Nathan in the last commit that caused the code to break - needs fixing
+#IF(NOT WIN32)
+#set(CUDA_HOST_FLAGS "-Xcompiler -fPIC -std=c++11")
+#ENDIF()
 
+#set(CUDA_NVCC_FLAGS_DEBUG          "${CUDA_FPIC_FLAGS}-g;-G" CACHE STRING "" FORCE)
+#set(CUDA_NVCC_FLAGS_RELEASE        "${CUDA_FPIC_FLAGS}--use_fast_math" CACHE STRING "" FORCE)
+#set(CUDA_NVCC_FLAGS_RELWITHDEBINFO "${CUDA_FPIC_FLAGS}--use_fast_math;-g;-lineinfo" CACHE STRING "" FORCE)
+#set(CUDA_NVCC_FLAGS_MINSIZEREL     "${CUDA_FPIC_FLAGS}--use_fast_math" CACHE STRING "" FORCE)
+
+#message("CUDA_HOST_FLAGS is ${CUDA_HOST_FLAGS}")
+#message("CUDA_NVCC_FLAGS_RELEASE is ${CUDA_NVCC_FLAGS_RELEASE}")
+
+
+## stuff added from commit - linux port builds :last working commit(fix this if required when above issue is resolved - rutuja)  
+set(CUDA_NVCC_FLAGS_DEBUG          -Xcompiler -fPIC;-std=c++11;-g;-G CACHE STRING "" FORCE)
+set(CUDA_NVCC_FLAGS_RELEASE        -Xcompiler -fPIC;-std=c++11;--use_fast_math CACHE STRING "" FORCE)
+set(CUDA_NVCC_FLAGS_RELWITHDEBINFO -Xcompiler -fPIC;-std=c++11;--use_fast_math;-g;-lineinfo CACHE STRING "" FORCE)
+set(CUDA_NVCC_FLAGS_MINSIZEREL     -Xcompiler -fPIC;--std=c++11;-use_fast_math CACHE STRING "" FORCE)
 
 include(cmake/git-tag.cmake)
 include(cmake/ide.cmake)

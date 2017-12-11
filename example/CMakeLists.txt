@@ -7,13 +7,15 @@
 #
 #       http://www.apache.org/licenses/LICENSE-2.0
 
+cmake_minimum_required(VERSION 3.2)
+
 add_subdirectory(SFMT-src-1.5.1 sfmt)
 add_subdirectory(imshow)
 add_subdirectory(hogshow)
 
 add_subdirectory(max_gpu)
 add_subdirectory(stream)
-#add_subdirectory(scan)
+add_subdirectory(scan)
 
 set_target_properties(sfmt   PROPERTIES FOLDER examples/libs)
 set_target_properties(imshow PROPERTIES FOLDER examples/libs)

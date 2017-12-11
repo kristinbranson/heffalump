@@ -39,10 +39,10 @@ namespace gpu {
     using u16=uint16_t;
     using u32=uint32_t;
     using u64=uint64_t;
-    using i8 = int8_t;
-    using i16= int16_t;
-    using i32= int32_t;
-    using i64= int64_t;
+    using i8 =int8_t;
+    using i16=int16_t;
+    using i32=int32_t;
+    using i64=int64_t;
     using f32=float;
     using f64=double;
 
@@ -89,7 +89,7 @@ namespace gpu {
         const int y=threadIdx.y+blockIdx.y*blockDim.y;
         if(x<w && y<h) {
             const int i=x+y*p;
-            out[x+y*w]=float(a[i])-float(b[i]);
+            out[x+y*w]=float(b[i])-float(a[i]); // reversed a[i] - b[i] to  b[i] - a[i] - rutuja 
         }
     }
     
@@ -155,13 +155,20 @@ namespace gpu {
         const float xx= Ixx[i]*normx*normx;
         const float xy= Ixy[i]*normx*normy;
         const float yy= Iyy[i]*normy*normy;
-        const float xt=-Ixt[i]*normx*normt;
-        const float yt=-Iyt[i]*normy*normt;
+        const float xt= -Ixt[i]*normx*normt;
+        const float yt= -Iyt[i]*normy*normt;
         
         const float det=xx*yy-xy*xy;
-        if(det>1e-5) {
-            out_dx[i]=(xunits/det)*(xx*xt+xy*yt);
-            out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
+        const float trA = (xx+yy);
+        const float V1 = 0.5*sqrtf(trA*trA-4*det);
+        const float reliab = 0.5*trA-V1;
+        if(reliab>1.5e-3) {
+            //out_dx[i]=(xunits/det)*(xx*xt+xy*yt);
+            //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
+
+            //changed above equation to match opticalflow Lukas kanade - rutuja
+           out_dx[i]=(xunits/det)*(yy*xt-xy*yt);
+           out_dy[i]=(yunits/det)*(-xy*xt+xx*yt);
         } else {
             out_dx[i]=0.0f;
             out_dy[i]=0.0f;
@@ -188,6 +195,7 @@ namespace gpu {
             float r=i-c;
             k[i]=norm*expf(-0.5f*r*r/s2);
         }
+        
         return k;
     }
 
@@ -214,6 +222,7 @@ namespace gpu {
                 unsigned nks1[]={0,kernels.nder};
                 stage1.dx=SeparableConvolutionInitialize(logger,w,h,p,ks,nks0);
                 stage1.dy=SeparableConvolutionInitialize(logger,w,h,p,ks,nks1);
+                
             }
             CUTRY(cudaMalloc(&stage1.dt,bytesof_intermediate()));
 
@@ -243,11 +252,13 @@ namespace gpu {
             CUTRY(cudaEventCreate(&stage1.t_done,cudaEventDisableTiming));
             CUTRY(cudaEventCreate(&stage3.done,cudaEventDisableTiming));
 
+
             for(int i=0;i<5;++i)
                 CUTRY(cudaStreamCreateWithFlags(&streams[i],cudaStreamNonBlocking));
 
             conv_with_stream(&stage1.dx,streams[0]);
             conv_with_stream(&stage1.dy,streams[1]);
+
             mdx.with_stream(streams[0]);
             mdy.with_stream(streams[1]);
             mdt.with_stream(streams[2]);            
@@ -270,6 +281,7 @@ namespace gpu {
                 CUTRY_NOTHROW(logger,cudaEventDestroy(stage1.t_done));
                 CUTRY_NOTHROW(logger,cudaEventDestroy(stage3.done));
 
+
                 CUTRY_NOTHROW(logger,cudaFree(last));
                 CUTRY_NOTHROW(logger,cudaFree(input));
                 CUTRY_NOTHROW(logger,cudaFree(out));
@@ -280,6 +292,7 @@ namespace gpu {
                 CUTRY_NOTHROW(logger,cudaFree(stage1.dt));
                 SeparableConvolutionTeardown(&stage1.dx);
                 SeparableConvolutionTeardown(&stage1.dy);
+
 
                 CUTRY_NOTHROW(logger,cudaFree(stage2.xx));
                 CUTRY_NOTHROW(logger,cudaFree(stage2.xy));
@@ -304,6 +317,10 @@ namespace gpu {
                 CUTRY(cudaEventRecord(input_ready,streams[0]));
                 CUTRY(cudaStreamWaitEvent(streams[1],input_ready,0));
                 CUTRY(cudaStreamWaitEvent(streams[2],input_ready,0));
+
+                CUTRY(cudaStreamWaitEvent(streams[3],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[4],input_ready,0));
+
                 {
 
                     dim3 block(32,4);
@@ -318,8 +335,9 @@ namespace gpu {
                     #undef CASE
                     }                
 
+                    
                     // copy kernel uses vectorized load/stores
-    #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
+  /*  #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
                     CHECK(aligned_to(input,16));// input must be aligned to float4 (16 bytes)
                     CHECK(aligned_to(last,16)); // output must be aligned to float4 (16 bytes)
                     const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
@@ -333,11 +351,16 @@ namespace gpu {
                         CASE(u64); CASE(i64); CASE(f64);
                         default:;
                     #undef CASE
-                    }
+                    }*/
                 
                 }
-                conv_no_copy(&stage1.dx,(SeparableConvolutionScalarType)type,input);
-                conv_no_copy(&stage1.dy,(SeparableConvolutionScalarType)type,input);
+
+                //conv_no_copy(&stage1.dx,(SeparableConvolutionScalarType)type,input);
+                //conv_no_copy(&stage1.dy,(SeparableConvolutionScalarType)type,input);
+
+                // changed the input to last to calculate flow of last frame w.r.t to current frame - rutuja
+                conv_no_copy(&stage1.dx,(SeparableConvolutionScalarType)type,last);
+                conv_no_copy(&stage1.dy,(SeparableConvolutionScalarType)type,last);
 
                 // Compute max magnitude for normalizing amplitudes
                 // to avoid denormals (~7% of runtime cost)
@@ -352,6 +375,8 @@ namespace gpu {
                 CUTRY(cudaEventRecord(stage1.x_done,streams[0]));
                 CUTRY(cudaEventRecord(stage1.y_done,streams[1]));
                 CUTRY(cudaEventRecord(stage1.t_done,streams[2]));
+                
+
 
                 // syncs to start stage 2
                 // for out=left*right
@@ -405,6 +430,26 @@ namespace gpu {
                         mdx.out,mdy.out,mdt.out,
                         n);
                 }
+
+                // copy kernel uses vectorized load/stores //this has to happen after the gradients are calculated 
+                //as gradients are being calculated on last frame (hack - rutuja)
+    #define aligned_to(p,n) ((((uint64_t)(p))&(n-1))==0)
+                    CHECK(aligned_to(input,16));// input must be aligned to float4 (16 bytes)
+                    CHECK(aligned_to(last,16)); // output must be aligned to float4 (16 bytes)
+                    const int PAYLOAD=sizeof(float4)/bytes_per_pixel(type); // 4,8,or 16
+                    CHECK(aligned_to(pitch*h,PAYLOAD)); // size must be aligned to payload
+    #undef aligned_to
+                    switch(type) {
+                    #define CASE(T) case lk_##T: cpy_k<T><<<CEIL(pitch*h,128*PAYLOAD),128,0,streams[2]>>>((T*)last,(T*)input,pitch*h); break;
+                        CASE(u8);  CASE(i8);
+                        CASE(u16); CASE(i16);
+                        CASE(u32); CASE(i32); CASE(f32);
+                        CASE(u64); CASE(i64); CASE(f64);
+                        default:;
+                    #undef CASE
+                    }
+
+
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
             }
@@ -431,8 +476,7 @@ namespace gpu {
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
                 CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-    //            CUTRY(cudaMemcpyAsync(buf,last,bytesof_input(),cudaMemcpyDeviceToHost,streams[4]));
-    //            CUTRY(cudaMemcpyAsync(buf,stage1.dt,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,stage1.dx.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
                 CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
@@ -466,7 +510,7 @@ namespace gpu {
             float *dt;       
             cudaEvent_t x_done,y_done,t_done;
         } stage1; // initial computation of gradient in x,y, and t
-        
+
         priv::absmax::gpu::absmax_context_t mdx,mdy,mdt;
 
         struct {            
