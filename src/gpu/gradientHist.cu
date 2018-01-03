@@ -185,13 +185,13 @@ namespace gpu {
                 const int ncellw=FLOOR(w,cellw);                
                 const int binpitch=ncellw*ncellh;
                 
-                //const int neighborx=dx<0.0f?-1:1;
-                //const int stepy=dy<0.0f?-1:1;
-                //const int neighbory=stepy*ncellw;
-                const int neighbory=dy<0.0f?-1:1;
-                const int stepx=dx<0.0f?-1:1;
-                const int neighborx=stepx*ncellh;
-                const int cellidx=cellj+celli*ncellw; // swapped celli and cellj to match matlab row major indexing-rutuja
+                const int neighborx=dx<0.0f?-1:1;
+                const int stepy=dy<0.0f?-1:1;
+                const int neighbory=stepy*ncellw;
+               // const int neighbory=dy<0.0f?-1:1;
+               // const int stepx=dx<0.0f?-1:1;
+                //const int neighborx=stepx*ncellh;
+                const int cellidx=celli+cellj*ncellw; // swapped celli and cellj to match matlab row major indexing-rutuja
 #if 0
                 //Useful for checking normalization
                 const int th=0.0f;
@@ -202,24 +202,24 @@ namespace gpu {
                 const float mth=fpartf(theta_bins[rx+ry*w]);
 #endif
                 
-               // const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
-               // const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
-               const bool inx=(0<=(neighbory+cellj)&&(neighbory+cellj)<ncellh);                
-               const bool iny=(0<=(stepx+celli)&&(stepx+celli)<ncellw);
+                const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
+                const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
+               //const bool inx=(0<=(neighbory+cellj)&&(neighbory+cellj)<ncellh);                
+               //const bool iny=(0<=(stepx+celli)&&(stepx+celli)<ncellw);
 
                 //float *b=out+(binpitch*th)+cellidx;
                 const float mx=fabsf(dx);
                 const float my=fabsf(dy);
-                /*const float
+                const float
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
                     c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);*/
-                const float 
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                /*const float 
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(cellj          ,celli      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(cellj          ,celli+stepx,ncellw,ncellh,cellw,cellh),
                     c10=m*      mx *(1.0f-my)*cellnorm(cellj+neighbory,celli      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(cellj+neighbory,celli+stepx,ncellw,ncellh,cellw,cellh);
+                    c11=m*      mx *      my *cellnorm(cellj+neighbory,celli+stepx,ncellw,ncellh,cellw,cellh);*/
 
 #if 0                
                 // For benchmarking to check the cost of using the atomics.
@@ -240,8 +240,8 @@ namespace gpu {
                     float * const b=out+binpitch*th+cellidx;
                     atomicAdd(b,(1-mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
-                    if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
-                    if(inx) atomicAdd(b+neighbory,(1-mth)*c10);
+                    if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
+                    if(inx) atomicAdd(b+neighborx,(1-mth)*c10);
                 }
     
                 {
@@ -249,8 +249,8 @@ namespace gpu {
                     float * const b=out+binpitch*thn+cellidx;
                     atomicAdd(b,(mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
-                    if(iny) atomicAdd(b+neighborx,(mth)*c01);
-                    if(inx) atomicAdd(b+neighbory,(mth)*c10);
+                    if(iny) atomicAdd(b+neighbory,(mth)*c01);
+                    if(inx) atomicAdd(b+neighborx,(mth)*c10);
                 }
 
 
