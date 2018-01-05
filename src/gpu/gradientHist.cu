@@ -238,19 +238,19 @@ namespace gpu {
 
                 {
                     float * const b=out+binpitch*th+cellidx;
-                    atomicAdd(b,(1-mth)*c00);
-                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
-                    if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
-                    if(inx) atomicAdd(b+neighborx,(1-mth)*c10);
+                    atomicAdd(b,(mth)*c00);
+                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
+                    if(iny) atomicAdd(b+neighbory,(mth)*c01);
+                    if(inx) atomicAdd(b+neighborx,(mth)*c10);
                 }
     
                 {
                     const int thn=((th+1)>=nbins)?0:(th+1);
                     float * const b=out+binpitch*thn+cellidx;
-                    atomicAdd(b,(mth)*c00);
-                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
-                    if(iny) atomicAdd(b+neighbory,(mth)*c01);
-                    if(inx) atomicAdd(b+neighborx,(mth)*c10);
+                    atomicAdd(b,(1-mth)*c00);
+                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
+                    if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
+                    if(inx) atomicAdd(b+neighborx,(1-mth)*c10);
                 }
 
 
