@@ -98,14 +98,17 @@ namespace gpu {
                 float theta = atan2f(y,x);
 
                 // if hog wrap around the theta values between 0 to pi - //rutuja
-               if(hog_bin==0){
+            
+               if(hog_bin==1){
+                   if(theta < 0){
+                       theta = theta  + 3.141592653589f;
+                   }      
+               }else{
                    theta = theta/2;
+                   if(theta < 0){
+                       theta = theta + 3.141592653589f;
+                   }
                }
-               
-               if(theta < 0){
-                      theta =  theta   + 3.141592653589f;
-               }
-               
 
                 // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
                 //if(hog_bin){
