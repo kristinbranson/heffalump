@@ -113,8 +113,8 @@ namespace gpu {
                 // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
                 //if(hog_bin){
                 theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta);
-                if(theta==1.5708){
-                    printf("%.02f",theta_bin[ix+iy*w]);
+                if(theta < 1.5708){
+                    printf("%.02f ",theta_bin[ix+iy*w]);
                 }
                 
                 //}else{
