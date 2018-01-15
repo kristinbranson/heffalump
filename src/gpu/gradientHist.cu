@@ -113,9 +113,9 @@ namespace gpu {
                 // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
                 //if(hog_bin){
                 theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta);
-                if(theta < 1.5708){
+                /*if(theta < 1.5708){
                     printf("%.02f ",theta_bin[ix+iy*w]);
-                }
+                }*/
                 
                 //}else{
                   // theta_bin[ix+iy*w]=nbins*fpartf((0.15915494309f*theta)+0.5f); // angle is mapped to bins
@@ -195,13 +195,14 @@ namespace gpu {
                 const int ncellw=FLOOR(w,cellw);                
                 const int binpitch=ncellw*ncellh;
                 
-                const int neighborx=dx<0.0f?-1:1;
+                const int stepx=dx<0.0f?-1:1;
                 const int stepy=dy<0.0f?-1:1;
-                const int neighbory=stepy*ncellw;
+                const int neighborx = stepx*ncellw;
+                const int neighbory=stepy*ncellw*ncellh;
                 //const int neighbory=dy<0.0f?-1:1;
                 //const int stepx=dx<0.0f?-1:1;
                 //const int neighborx=stepx*ncellh;
-                const int cellidx=celli+cellj*ncellw;
+                const int cellidx=(celli+cellj*ncellw)*ncellh;
 #if 0
                 //Useful for checking normalization
                 const int th=0.0f;
@@ -222,8 +223,8 @@ namespace gpu {
                 const float
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
-                    c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                    c10=m*      mx *(1.0f-my)*cellnorm(celli+stepx,cellj      ,ncellw,ncellh,cellw,cellh),
+                    c11=m*      mx *      my *cellnorm(celli+stepx,cellj+stepy,ncellw,ncellh,cellw,cellh);
                 /*const float 
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(cellj          ,celli      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(cellj          ,celli+stepx,ncellw,ncellh,cellw,cellh),
@@ -246,7 +247,7 @@ namespace gpu {
                 if(inx) atomicAdd(b+neighbory,c10);*/
 
                 {
-                    float * const b=out+binpitch*th+cellidx;
+                    float * const b=out+th+cellidx;
                     atomicAdd(b,(1-mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
                     if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
@@ -255,7 +256,7 @@ namespace gpu {
     
                 {
                     const int thn=((th+1)>=nbins)?0:(th+1);
-                    float * const b=out+binpitch*thn+cellidx;
+                    float * const b=out+thn+cellidx;
                     atomicAdd(b,(mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
                     if(iny) atomicAdd(b+neighbory,(mth)*c01);
