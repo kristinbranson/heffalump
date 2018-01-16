@@ -15,6 +15,31 @@
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
+
+void write_histoutput(std::string file,float* out_img, unsigned w, unsigned h,unsigned nbins){
+
+     std::ofstream x_out;
+     x_out.open(file.c_str());
+
+     for(int k  =0;k < nbins;k++){
+
+       for(int i = 0;i < h;i++){
+
+         for(int j = 0; j < w;j++){
+
+                 x_out << out_img[k*w*h + j*h + i] ;
+
+                 if(j != w-1 || i != h-1 || k != nbins -1)
+                     x_out << ",";
+
+             }
+
+
+          }
+     }
+
+}
+
 struct workspace {
     struct SeparableConvolutionContext dx,dy;
     struct gradientHistogram gh;
@@ -95,6 +120,10 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
     GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
+
+    float* out = (float*)malloc(512*sizeof(float));
+    GradientHistogramCopyLastResult(&ws->gh,out,512*sizeof(float));
+    write_histoutput("~/r.csv",out,8,8 8);
 }
 
 
