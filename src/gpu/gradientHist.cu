@@ -236,7 +236,7 @@ namespace gpu {
                 if(inx) atomicAdd(b+neighbory,c10);*/
 
                 {
-                    float * const b=out+cellidx;
+                    float * const b=out+binpitch*5+cellidx;
                     atomicAdd(b,(1-mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
                     if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
