@@ -92,27 +92,32 @@ namespace gpu {
         {
             const int ix=threadIdx.x+blockIdx.x*blockDim.x;
             const int iy=threadIdx.y+blockIdx.y*blockDim.y;
+       
             if(ix<w && iy<h) {
                 const float x=dx[ix+iy*p];
                 const float y=dy[ix+iy*p];
-                float theta = atan2f(y,x);
-
+                const float theta = atan2f(y,x);
+                float theta_final = 0;
                 // if hog wrap around the theta values between 0 to pi - //rutuja
             
                if(hog_bin==1){
                    if(theta < 0){
-                       theta = theta  + 3.141592653589f;
-                   }      
+                      theta_final = theta  + 3.141592653589f;
+                   }else{      
+                      theta_final = theta;
+                   }
                }else{
-                   theta = theta/2;
-                   if(theta < 0){
-                       theta = theta + 3.141592653589f;
+                   const float theta_intermediate = theta/2;
+                   if(theta_intermediate < 0){
+                       theta_final = theta_intermediate + 3.141592653589f;
+                   }else{
+                       theta_final = theta_intermediate;
                    }
                }
 
                 // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
                 //if(hog_bin){
-                theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta);
+                theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta_final);
                 /*if(theta < 1.5708){
                     printf("%.02f ",theta_bin[ix+iy*w]);
                 }*/
@@ -236,7 +241,7 @@ namespace gpu {
                 if(inx) atomicAdd(b+neighbory,c10);*/
 
                 {
-                    float * const b=out+binpitch*5+cellidx;
+                    float * const b=out+binpitch*th+cellidx;
                     atomicAdd(b,(1-mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
                     if(iny) atomicAdd(b+neighbory,(1-mth)*c01);
@@ -245,7 +250,7 @@ namespace gpu {
     
                 {
                     const int thn=((th+1)>=nbins)?0:(th+1);
-                    float * const b=out+cellidx;
+                    float * const b=out+binpitch*thn+cellidx;
                     atomicAdd(b,(mth)*c00);
                     if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
                     if(iny) atomicAdd(b+neighbory,(mth)*c01);
