@@ -17,7 +17,6 @@
 extern "C" {
 #endif
 
-void write_histoutput(std::string file,float* out_img, unsigned w, unsigned h,unsigned nbins);
 enum HOGScalarType {
     hog_u8,
     hog_u16,
