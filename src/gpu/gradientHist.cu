@@ -98,33 +98,20 @@ namespace gpu {
                 const float y=dy[ix+iy*p];
                 const float theta = atan2f(y,x);
                 float theta_final = 0;
+               
                 // if hog wrap around the theta values between 0 to pi - //rutuja
-            
-               if(hog_bin==1){
-                   if(theta < 0){
-                      theta_final = theta  + 3.141592653589f;
-                   }else{      
-                      theta_final = theta;
-                   }
-               }else{
-                   const float theta_intermediate = theta/2;
-                   if(theta_intermediate < 0){
-                       theta_final = theta_intermediate + 3.141592653589f;
-                   }else{
-                       theta_final = theta_intermediate;
-                   }
-               }
+                if(hog_bin==0){
+                   theta = theta/2;
+                }
+
+                if(theta < 0){
+                   theta_final = theta  + 3.141592653589f;
+                }else{
+                   theta_final = theta;
+                }
 
                 // binning between 0 tp pi for hog and 0 to pi to -0 for hof -//rutuja
-                //if(hog_bin){
                 theta_bin[ix+iy*w]=nbins*fpartf(2*0.15915494309f*theta_final);
-                /*if(theta < 1.5708){
-                    printf("%.02f ",theta_bin[ix+iy*w]);
-                }*/
-                
-                //}else{
-                  // theta_bin[ix+iy*w]=nbins*fpartf((0.15915494309f*theta)+0.5f); // angle is mapped to bins
-                //}
                 mag[ix+iy*w]=sqrtf(x*x+y*y);
             }
         }
@@ -200,14 +187,10 @@ namespace gpu {
                 const int ncellw=FLOOR(w,cellw);                
                 const int binpitch=ncellw*ncellh;
                 
-               /* const int neighborx=dx<0.0f?-1:1;
+                const int neighborx=dx<0.0f?-1:1;
                 const int stepy=dy<0.0f?-1:1;
                 const int neighbory=stepy*ncellw;
-                const int cellidx=celli+cellj*ncellw;*/
-                const int neighbory=dy<0.0f?-1:1;
-                const int stepx=dx<0.0f?-1:1;
-                const int neighborx=stepx*ncellw;
-                const int cellidx=cellj+celli*ncellw;
+                const int cellidx=celli+cellj*ncellw;
 
 #if 0
                 //Useful for checking normalization
@@ -219,23 +202,16 @@ namespace gpu {
                 const float mth=fpartf(theta_bins[rx+ry*w]);
 #endif
                 
-                /*const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
-                const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);*/
-                const bool inx=(0<=(neighbory+cellj)&&(neighbory+cellj)<ncellw);                
-                const bool iny=(0<=(stepx+celli)&&(stepx+celli)<ncellh);
+                const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
+                const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
                 
                 const float mx=fabsf(dx);
                 const float my=fabsf(dy);
-                /*const float
+                const float
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
                     c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
                     c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);*/
-                const float
-                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(cellj          ,celli      ,ncellw,ncellh,cellw,cellh),
-                    c01=m*(1.0f-mx)*      my *cellnorm(cellj          ,celli+stepx,ncellw,ncellh,cellw,cellh),
-                    c10=m*      mx *(1.0f-my)*cellnorm(cellj+neighbory,celli      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(cellj+neighbory,celli+stepx,ncellw,ncellh,cellw,cellh);
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
                 
 #if 0                
                 // For benchmarking to check the cost of using the atomics.
