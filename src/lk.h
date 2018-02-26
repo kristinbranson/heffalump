@@ -40,6 +40,7 @@ struct LucasKanadeParameters {
         float derivative;
         float smoothing;
     } sigma;
+    float threshold;
 };
 
 struct LucasKanadeContext {

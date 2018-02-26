@@ -131,12 +131,12 @@ namespace gpu {
         const float * __restrict__ magx,
         const float * __restrict__ magy,
         const float * __restrict__ magt,
-        int n)
+        int n, float thr)
     {
         const int i=threadIdx.x+blockIdx.x*blockDim.x;
         if(i>=n)
             return;
-
+        
 #if 0
         const float mx=92.0f; //magx[0];
         const float my=92.0f; //magy[0];
@@ -162,7 +162,7 @@ namespace gpu {
         const float trA = (xx+yy);
         const float V1 = 0.5*sqrtf(trA*trA-4*det);
         const float reliab = 0.5*trA-V1;
-        if(reliab>1.5e-3) {
+        if(reliab>thr) {
             //out_dx[i]=(xunits/det)*(xx*xt+xy*yt);
             //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
 
@@ -417,6 +417,7 @@ namespace gpu {
     //            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
                 {
                     int n=w*h;
+                    float threshold = params.threshold;
                     dim3 block(32*4);
                     dim3 grid(CEIL(n,block.x));
                     float *out_dx=out;
@@ -428,7 +429,7 @@ namespace gpu {
                         stage3.xt.out,
                         stage3.yt.out,
                         mdx.out,mdy.out,mdt.out,
-                        n);
+                        n,threshold);
                 }
 
                 // copy kernel uses vectorized load/stores //this has to happen after the gradients are calculated 
