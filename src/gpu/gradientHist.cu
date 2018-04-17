@@ -169,86 +169,94 @@ namespace gpu {
             int cellw, int cellh) 
         {            
             // current input sample position
-            const int rx=threadIdx.x+blockIdx.x*blockDim.x;
-            const int ry=threadIdx.y+blockIdx.y*blockDim.y;
+            const int ry=threadIdx.y*4+blockIdx.y*blockDim.y*4;
 
-            if(in_bounds(rx,ry,w,h)) {
-                // compute weights for 4 influenced cells (tl,tr,bl,br)
-                // indices for the current cell (rx,ry) is hitting
-                const int celli=rx/cellw; 
-                const int cellj=ry/cellh;
+            const int ncellh=FLOOR(h,cellh);
+            const int ncellw=FLOOR(w,cellw);
+            const int binpitch=ncellw*ncellh;
+
+            int celli,cellj,neighborx,neighbory,stepy,cellidx,th,thn,rx_id,ry_id;
+            float dx,dy,mx,my,c00,c01,c10,c11,m,mth;
+            bool inx,iny;
+            
+            const int rx=(threadIdx.x*8)+blockIdx.x*blockDim.x*8;
+
+            //reduced the number of threads per block so that a single thread 
+            //can do more in its local neighborhood. This reduces the latency 
+            // caused by serialization using atomicAdd.
+
+            for(int idy=0;idy<4;idy++){
+              for(int idx=0;idx<8;idx++){
+                rx_id=rx+idx;
+                ry_id=ry+idy;
+                if(in_bounds(rx_id,ry_id,w,h)) {
+                    // compute weights for 4 influenced cells (tl,tr,bl,br)
+                    // indices for the current cell (rx,ry) is hitting
+                    celli=rx_id/cellw; 
+                    cellj=ry_id/cellh;
                 
-                // fractional coordinate relative to cell center
-                // should be less than one
-                const float dx=(rx-celli*cellw+0.5f)/float(cellw)-0.5f;
-                const float dy=(ry-cellj*cellh+0.5f)/float(cellh)-0.5f;
+                    // fractional coordinate relative to cell center
+                    // should be less than one
+                    dx=(rx_id-celli*cellw+0.5f)/float(cellw)-0.5f;
+                    dy=(ry_id-cellj*cellh+0.5f)/float(cellh)-0.5f;
                 
-                const int ncellh=FLOOR(h,cellh);
-                const int ncellw=FLOOR(w,cellw);                
-                const int binpitch=ncellw*ncellh;
-                
-                const int neighborx=dx<0.0f?-1:1;
-                const int stepy=dy<0.0f?-1:1;
-                const int neighbory=stepy*ncellw;
-                const int cellidx=celli+cellj*ncellw;
+                    neighborx=dx<0.0f?-1:1;
+                    stepy=dy<0.0f?-1:1;
+                    neighbory=stepy*ncellw;
+                    cellidx=celli+cellj*ncellw;
 
 #if 0
-                //Useful for checking normalization
-                const int th=0.0f;
-                const float m=1.0f;
+                    //Useful for checking normalization
+                    const int th=0.0f;
+                    const float m=1.0f;
 #else
-                const int th=theta_bins[rx+ry*w];
-                const float m=mag[rx+ry*w];
-                const float mth=fpartf(theta_bins[rx+ry*w]);
+                    th=theta_bins[rx_id+ry_id*w];
+                    m=mag[rx_id+ry_id*w];
+                    mth=fpartf(theta_bins[rx_id+ry_id*w]);
 #endif
                 
-                const bool inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
-                const bool iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
+                    inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
+                    iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
                 
-                const float mx=fabsf(dx);
-                const float my=fabsf(dy);
-                const float
-                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh),
-                    c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh),
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                    mx=fabsf(dx);
+                    my=fabsf(dy);
+                    c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
+                    /*c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                    c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);*/
+
                 
 #if 0                
-                // For benchmarking to check the cost of using the atomics.
-                // write  something out just to force the optimizer not to 
-                // remove the calculation
-                float *b=out+(binpitch*th)+cellidx;
-                *b=c00+c01+c10+c11;
+                    // For benchmarking to check the cost of using the atomics.
+                    // write  something out just to force the optimizer not to 
+                    // remove the calculation
+                    float *b=out+(binpitch*th)+cellidx;
+                    *b=c00+c01+c10+c11;
 #else
-                //atomicAdd(b,c00);
-                /*if(inx&iny) atomicAdd(b+neighborx+neighbory,c11);
-                if(iny) atomicAdd(b+neighbory,c01);
-                if(inx) atomicAdd(b+neighborx,c10);*/
-               /* if(inx&iny) atomicAdd(b+neighbory+neighborx,c11);
-                if(iny) atomicAdd(b+neighborx,c01);
-                if(inx) atomicAdd(b+neighbory,c10);*/
 
-                {
-                    float * const b=out+binpitch*th+cellidx;
-                    atomicAdd(b,(1-mth)*c00);
-                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
-                    if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
-                    if(inx) atomicAdd(b+neighbory,(1-mth)*c10);
-                }
+                    {
+                      float * b=out+binpitch*th+cellidx;
+                      atomicAdd(b,(1-mth)*c00);
+                      /*if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
+                      if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
+                      if(inx) atomicAdd(b+neighbory,(1-mth)*c10);*/
+                    }
     
-                {
-                    const int thn=((th+1)>=nbins)?0:(th+1);
-                    float * const b=out+binpitch*thn+cellidx;
-                    atomicAdd(b,(mth)*c00);
-                    if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
-                    if(iny) atomicAdd(b+neighborx,(mth)*c01);
-                    if(inx) atomicAdd(b+neighbory,(mth)*c10);
-                }
-
+                    {
+                      thn=((th+1)>=nbins)?0:(th+1);
+                      float * b=out+binpitch*thn+cellidx;
+                      atomicAdd(b,(mth)*c00);
+                      /*if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
+                      if(iny) atomicAdd(b+neighborx,(mth)*c01);
+                      if(inx) atomicAdd(b+neighbory,(mth)*c10);*/
+                    }
 
 #endif
-                
+                }
+              }
+             
             }
+ 
         }
 
 
@@ -284,14 +292,14 @@ namespace gpu {
             void compute(const float *dx,const float *dy) const  {                
                 try {
                     {
-                        dim3 block(32,8);
+                        dim3 block(32,4);
                         dim3 grid(
                             CEIL(params.image.w,block.x),
                             CEIL(params.image.h,block.y));
                         oriented_magnitudes_k<<<grid,block,0,stream>>>(mag,theta,dx,dy,
-                                                                        params.image.w,params.image.h,
-                                                                        params.image.pitch,params.nbins,
-                                                                        params.hog_bin);
+                                                                       params.image.w,params.image.h,
+                                                                       params.image.pitch,params.nbins,
+                                                                       params.hog_bin);
                     }
                     {
                         // This is vectorized using float4's.
@@ -300,13 +308,13 @@ namespace gpu {
                         zeros_k<<<unsigned(CEIL(n,size_t(1024*16))),1024,0,stream>>>((float4*)out,n/size_t(16));
                     }
                     {
-                        dim3 block(32,4); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
+                        dim3 block(8,8); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
                         dim3 grid(
-                            CEIL(params.image.w,block.x),
-                            CEIL(params.image.h,block.y));
+                            CEIL(params.image.w,64),
+                            CEIL(params.image.h,32));
                         gradhist_k<<<grid,block,0,stream>>>(out,mag,theta,
-                                                                params.image.w,params.image.h,
-                                                                params.nbins,params.cell.w,params.cell.h);
+                                                            params.image.w,params.image.h,
+                                                            params.nbins,params.cell.w,params.cell.h);
                     }
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
@@ -318,7 +326,6 @@ namespace gpu {
                     CHECK(result_nbytes()<=nbytes);
                     //original
                     CUTRY(cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
-
                     CUTRY(cudaStreamSynchronize(stream));
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
