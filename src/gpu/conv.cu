@@ -1,4 +1,3 @@
-//   Copyright 2017 Vidrio Technologies
 //   by Nathan Clack <nathan@vidriotech.com>
 //
 //   Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +23,8 @@
 #ifdef _MSC_VER
 #define noexcept
 #endif
+
+#define CEIL(num,den) ((num+den-1)/den)
 
 using namespace std;
 
@@ -110,7 +111,7 @@ namespace gpu {
             CUTRY(cudaMalloc(&out,sizeof_output(w,h)));
             CUTRY(cudaMalloc(&tmp,sizeof_output(w,h)));
             CUTRY(cudaMalloc(&kernels[0],sizeof(float)*nkernel[0]));
-            CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nkernel[1]));  
+            CUTRY(cudaMalloc(&kernels[1],sizeof(float)*nkernel[1]));
             // set to zero so padded coeffs are 0          
             if(nkernel[0]) CUTRY(cudaMemset(kernels[0],0,sizeof(float)*nkernel[0]));
             if(nkernel[1]) CUTRY(cudaMemset(kernels[1],0,sizeof(float)*nkernel[1]));
@@ -348,6 +349,369 @@ namespace gpu {
         #undef PAYLOAD
     }
 
+    // rutuja - row convolution
+    /*template<typename T> 
+    __global__ void conv_row_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        extern __shared__ float data[];
+     
+        // global mem address of this thread
+        const int idx = threadIdx.x + blockDim.x*blockIdx.x;
+        const int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        const int gid = idx + idy*w; 
+
+        int x; // image based coordinate
+
+        //load shared memory  
+        if(idx < w && idy < h){
+        
+            data[threadIdx.x+KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[gid];
+        }
+
+        if(idx >= w){
+
+            data[threadIdx.x+KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[w-1 + idy*w];//clamp to the border
+        }
+
+        x = idx - KERNEL_RADIUS;
+        if(x < 0){
+            data[threadIdx.x + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[idy*w];//clamp to the edge   
+        }else{
+            if(threadIdx.x < KERNEL_RADIUS)
+                data[threadIdx.x + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[idx-KERNEL_RADIUS + idy*w];
+        }
+
+        x = idx + KERNEL_RADIUS;
+        if(x > w-1)
+            data[threadIdx.x + 2*KERNEL_RADIUS + (threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))] = in[w-1 + idy*w];//clamp to the edge
+   
+        if((threadIdx.x < blockDim.x) && (threadIdx.x >= (blockDim.x - KERNEL_RADIUS)) && (x < w-1))
+            data[threadIdx.x + 2*KERNEL_RADIUS + (threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))] = in[gid + KERNEL_RADIUS];
+
+        
+        __syncthreads();
+        
+        // convolution
+        if(idx < w && idy < h){
+            float sum = 0;
+            x = KERNEL_RADIUS + threadIdx.x;
+
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
+                sum += data[x + i + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] * k[KERNEL_RADIUS + i];
+
+            out[gid] = sum; 
+        }
+
+    }*/
+
+    // rutuja - column convolution
+    /*template<typename T>
+    __global__ void conv_col_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        extern __shared__ float data[];
+  
+        // global mem address of this thread
+        const int idx = threadIdx.x + blockDim.x*blockIdx.x;
+        const int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        const int gid = idx + idy*w;
+
+        int y; // image based coordinate
+
+        //load shared memory
+        if(idx < w && idy < h) {
+
+            data[threadIdx.x + (threadIdx.y+KERNEL_RADIUS)*blockDim.x] = in[gid];
+        }
+ 
+        if(idy >= h){
+
+            data[threadIdx.x + (threadIdx.y+KERNEL_RADIUS)*blockDim.x] = in[idx+(h-1)*w];//clamp to the border
+        }        
+
+        y = idy - KERNEL_RADIUS;
+        if(y < 0){
+            data[threadIdx.x + threadIdx.y*blockDim.x] = in[idx];// clamp to the border
+        }else{
+            if(threadIdx.y < KERNEL_RADIUS)
+                data[threadIdx.x + threadIdx.y*blockDim.x] = in[idx + (idy-KERNEL_RADIUS)*w];           
+        }
+
+        y = idy + KERNEL_RADIUS;
+        if(y > h-1)
+            data[threadIdx.x + (threadIdx.y + 2*KERNEL_RADIUS)*blockDim.x] = in[idx+(h-1)*w];//clamp to the border  
+            
+        if((threadIdx.y < blockDim.y) && (threadIdx.y >= (blockDim.y - KERNEL_RADIUS)) && y < h-1)
+            data[threadIdx.x + (threadIdx.y + 2*KERNEL_RADIUS)*blockDim.x] = in[idx + (idy + KERNEL_RADIUS)*w];
+        
+        __syncthreads();
+
+        // convolution
+        float sum = 0;
+        if(idx < w && idy < h) {
+            y = KERNEL_RADIUS + threadIdx.y;
+
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
+                sum += data[threadIdx.x + (y+i)*blockDim.x] * k[KERNEL_RADIUS + i];
+
+            out[gid] = sum;
+        }
+
+    }*/
+
+    template<typename T> 
+    __global__ void conv_row_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        extern __shared__ float data[];
+     
+        // global mem address of this thread
+        const int idx = threadIdx.x + blockDim.x*blockIdx.x;
+        const int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        const int gid = idx + idy*w;
+
+        int samples=0,thdu=0,thdr=0,start=0,end=0,clamp_start=0,offset_start=0,offset_end=0;
+        if(blockIdx.x == 0 && blockIdx.x !=gridDim.x-1){
+            samples = KERNEL_RADIUS + blockDim.x;   
+            thdu = samples/4;
+            thdr = samples%4;
+            start = blockDim.x*blockIdx.x;
+
+        }else if(blockIdx.x==gridDim.x-1 && blockIdx.x !=0){
+            
+            int rem = w%blockDim.x; 
+            if(rem==0)
+                samples = KERNEL_RADIUS + blockDim.x; 
+            else
+                samples = KERNEL_RADIUS + rem;
+            thdu = samples/4;
+            thdr = samples%4;
+            start = blockDim.x*blockIdx.x - KERNEL_RADIUS;
+
+            if(start<0){
+                start = (-1)*start;
+                for(int c=0;c < start;c++){
+
+                    data[c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[idy*w];
+
+                }
+                samples = samples - start;
+                thdu = samples/4;
+                thdr = samples%4;
+                offset_start = start;
+                clamp_start=1;
+                start=0;
+               
+            }
+                  
+        }else if(blockIdx.x==0 && gridDim.x-1 ==0){
+            if(blockDim.x > w)
+                samples = w;
+            else
+                samples = blockDim.x;
+            thdu = samples/4;
+            thdr = samples%4;
+            start = blockDim.x*blockIdx.x;
+            
+        }else{
+
+            samples = 2*KERNEL_RADIUS + blockDim.x;
+            thdu = samples/4;
+            thdr = samples%4;
+            start = blockDim.x*blockIdx.x - KERNEL_RADIUS;
+            end = blockDim.x*blockIdx.x + blockDim.x + KERNEL_RADIUS; 
+            if(start<0){
+                start = (-1)*start;
+                for(int c=0;c < start;c++){
+
+                    data[c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[idy*w];
+                }
+                samples = samples - start;
+                thdu = samples/4;
+                thdr = samples%4;
+                offset_start = start;
+                clamp_start=1;
+                start=0;
+            }
+            if(end > w){
+
+                end = end-w;
+                offset_end=samples-end;
+                for(int c=0;c < end;c++){
+
+                    data[offset_end + c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[w-1 + idy*w];
+                }
+                samples = samples - end;
+                thdu = samples/4;
+                thdr = samples%4;            
+            }              
+
+        } 
+
+        if(idy < h){
+            
+            if(idx==0){
+
+                int count = 0;
+                for(int a = 0 ;a < KERNEL_RADIUS;a++){
+
+                    data[count + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[idy*w];     
+              
+                    count = count + 1;
+                }
+            }
+
+            if(idx == w-1){
+               
+                int cnt = threadIdx.x + KERNEL_RADIUS + 1;
+                
+                for(int b = 0 ;b < (KERNEL_RADIUS+blockDim.x-threadIdx.x-1) ;b++){
+
+                    data[cnt + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[w-1+(idy*w)];
+          
+                    cnt = cnt + 1;
+                }              
+             }
+
+             if(threadIdx.x < thdu){
+        
+                 if(blockIdx.x==0 && blockIdx.x !=gridDim.x-1){
+           
+                     reinterpret_cast<float4*>(data + KERNEL_RADIUS + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+
+                 }else if(blockIdx.x == gridDim.x-1 && blockIdx.x !=0){
+            
+                     if(clamp_start){
+
+                         reinterpret_cast<float4*>(data + offset_start + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+
+                     }else{
+                      
+                         reinterpret_cast<float4*>(data + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+
+                     }
+                 
+                 }else if(blockIdx.x==0 && gridDim.x-1==0){
+
+                     reinterpret_cast<float4*>(data + KERNEL_RADIUS + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+                     
+                 }else{
+          
+                     if(clamp_start){
+
+                         reinterpret_cast<float4*>(data + offset_start + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+
+                     }else{
+
+                         reinterpret_cast<float4*>(data + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
+
+                     }
+ 
+                 }  
+             }
+ 
+             if(threadIdx.x < thdr+thdu && threadIdx.x >= thdu){
+            
+                  if(blockIdx.x==0 && blockIdx.x!=gridDim.x-1){
+        
+                      data[thdu*4 + threadIdx.x - thdu + KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+
+                  }else if(blockIdx.x==gridDim.x-1 && blockIdx.x!=0){
+
+                       if(clamp_start){
+     
+                           data[thdu*4 + offset_start + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+ 
+                       }else{
+
+                           data[thdu*4 + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+                       }
+
+                  }else if(blockIdx.x==0 && gridDim.x==0){
+
+                      data[thdu*4 + threadIdx.x - thdu + KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+
+                  }else{
+
+                      if(clamp_start){
+                         
+                          data[thdu*4 + offset_start + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+
+                      }else{
+                     
+                          data[thdu*4 + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+                      }
+                  }
+             }     
+
+        }
+        __syncthreads();
+
+         // convolution
+        if(idx < w && idy < h){
+            float sum = 0;
+            const int x = KERNEL_RADIUS + threadIdx.x;
+
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
+                sum += data[x + i + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] * k[KERNEL_RADIUS + i];
+
+            out[gid] = sum; 
+        }
+
+    }
+
+
+
+    template<typename T>
+    __global__ void conv_col_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        extern __shared__ float data[];
+  
+        // global mem address of this thread
+        const int idx = threadIdx.x + blockDim.x*blockIdx.x;
+        const int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        const int gid = idx + idy*w;
+
+        int y; // image based coordinate
+
+        if(threadIdx.y == 0){
+
+            const int start = idy - KERNEL_RADIUS;
+            const int end = idy + blockDim.y + KERNEL_RADIUS;
+            int index;
+            int count = 0;
+            for(int id = start ;id < end ;id++){
+
+                index = idx + id*w;
+                if(id < 0){
+                    data[threadIdx.x + (count*blockDim.x)] = in[idx];
+                }else if(id > h-1){
+                    data[threadIdx.x + (count*blockDim.x)] = in[idx+(h-1)*w];
+                }else{
+                    data[threadIdx.x + (count*blockDim.x)] = in[index];
+                }
+
+                count = count +1;
+            }   
+        }
+
+        __syncthreads();
+
+        float sum = 0;
+        if(idx < w && idy < h) {
+            y = KERNEL_RADIUS + threadIdx.y;
+
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
+                sum += data[threadIdx.x + (y+i)*blockDim.x] * k[KERNEL_RADIUS + i];
+
+            out[gid] = sum;
+        }
+   
+
+    }
+
     template <typename T> void conv_nonunit_stride(float * out,const T* in,int w,int h,int pitch,const float *k,int nk,cudaStream_t stream) {
         #define PAYLOAD  (sizeof(float4)/sizeof(T)) // one load transaction gets this many T elements
         CHECK(pitch%PAYLOAD==0);                    // pitch must be aligned to 16 bytes (PAYLOAD elements)
@@ -383,6 +747,27 @@ namespace gpu {
         conv_unit_stride_k<T,32,BH><<<grid,th,0,stream>>>(out,in,w,pitch,k,nk);
     }
 
+    //rutuja - strided row convolution kernel call
+    template<typename T> void conv_row(float *out,const T* in,int w, int h, int pitch,float *k,int nk,cudaStream_t stream) {
+
+        dim3 block(8,32);
+        dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+        int kernel_radius = (nk-1)/2;
+        conv_row_k<T><<<grid,block,((block.x+(2*kernel_radius))*block.y*sizeof(float)),stream>>>(out,in,w,h,pitch,k,nk);
+
+    }
+  
+    //rutuja - non strided column convolution kernel call
+    template<typename T> void conv_col(float *out,const T* in,int w, int h, int pitch,float *k,int nk,cudaStream_t stream) {
+
+        dim3 block(32,8);
+        dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+        int kernel_radius = (nk-1)/2;
+        conv_col_k<T><<<grid,block,(block.x*(block.y+2*kernel_radius)*sizeof(float)),stream>>>(out,in,w,h,pitch,k,nk);
+
+    }
+
+
     /// 2d convolution
     template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
         auto ws=static_cast<workspace*>(self->workspace);
@@ -396,11 +781,13 @@ namespace gpu {
                                self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
 #else
 
-        if(ws->nkernel[0]>0&&ws->nkernel[1]>0) {
+        /*if(ws->nkernel[0]>0&&ws->nkernel[1]>0) {
             conv_unit_stride<T,4>(ws->tmp,reinterpret_cast<T*>(ws->in),
                                   self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
             conv_nonunit_stride<f32>(ws->out,ws->tmp,
                                        self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
+            //conv_unit_stride<T,4>(ws->tmp,reinterpret_cast<T*>(ws->in),
+            //                      self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
         } else if(ws->nkernel[0]>0) {
             conv_unit_stride<T,4>(ws->out,reinterpret_cast<T*>(ws->in),
                                   self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
@@ -412,7 +799,34 @@ namespace gpu {
             // cast to float?
             EXCEPT("Not implemented");
             // TODO
+        }*/
+
+        if((ws->nkernel[0]>0) && (ws->nkernel[1]>0)) {
+         
+            conv_row<T>(ws->tmp,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
+            //conv_row<f32>(ws->out,ws->tmp,
+            //                      self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
+            conv_col<f32>(ws->out,ws->tmp,
+                                  self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
+             
+        } else if(ws->nkernel[0]>0) {
+
+            conv_row<T>(ws->out,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
+
+        } else if(ws->nkernel[1]>0) {
+
+            conv_col<T>(ws->out,reinterpret_cast<T*>(ws->in),
+                                  self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
+
+        } else {
+            // nothing to do I guess?
+            // cast to float?
+            EXCEPT("Not implemented");
+            // TODO
         }
+
 #endif
 
 

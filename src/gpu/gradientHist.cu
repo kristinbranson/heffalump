@@ -169,7 +169,7 @@ namespace gpu {
             int cellw, int cellh) 
         {            
             // current input sample position
-            const int ry=threadIdx.y*4+blockIdx.y*blockDim.y*4;
+            const int ry=(threadIdx.y*4)+blockIdx.y*blockDim.y*4;
 
             const int ncellh=FLOOR(h,cellh);
             const int ncellw=FLOOR(w,cellw);
@@ -221,9 +221,9 @@ namespace gpu {
                     mx=fabsf(dx);
                     my=fabsf(dy);
                     c00=m*(1.0f-mx)*(1.0f-my)*cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
-                    /*c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                    c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
                     c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
-                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);*/
+                    c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
 
                 
 #if 0                
@@ -237,18 +237,18 @@ namespace gpu {
                     {
                       float * b=out+binpitch*th+cellidx;
                       atomicAdd(b,(1-mth)*c00);
-                      /*if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
+                      if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
                       if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
-                      if(inx) atomicAdd(b+neighbory,(1-mth)*c10);*/
+                      if(inx) atomicAdd(b+neighbory,(1-mth)*c10);
                     }
     
                     {
                       thn=((th+1)>=nbins)?0:(th+1);
                       float * b=out+binpitch*thn+cellidx;
                       atomicAdd(b,(mth)*c00);
-                      /*if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
+                      if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
                       if(iny) atomicAdd(b+neighborx,(mth)*c01);
-                      if(inx) atomicAdd(b+neighbory,(mth)*c10);*/
+                      if(inx) atomicAdd(b+neighbory,(mth)*c10);
                     }
 
 #endif

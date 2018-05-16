@@ -477,6 +477,7 @@ namespace gpu {
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
                 CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,stage3.yy.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
                 CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
