@@ -9,9 +9,10 @@
 #pragma once 
 #include <stddef.h>
 #include <stdint.h>
-
+#include "gpu/crop.h"
 #ifndef H_NGC_HOG
 #define H_NGC_HOG
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +37,7 @@ struct HOGImage {
     int w;
     int h;
     int pitch;
+    struct interest_pnts* ips; 
 };
 
 struct HOGParameters {
@@ -53,13 +55,14 @@ struct HOGContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     int w,h;
     struct HOGParameters params;
-    void *workspace;
+    struct interest_pnts *ips;
+    void *workspace;     
 };
 
 struct HOGContext HOGInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOGParameters params, 
-    int w, int h);
+    int w, int h, struct interest_pnts *ips);
 
 void HOGTeardown(struct HOGContext *context);
 
@@ -93,3 +96,4 @@ void HOGOutputShape(const struct HOGContext *context,struct HOGFeatureDims *shap
 #endif
 
 #endif
+

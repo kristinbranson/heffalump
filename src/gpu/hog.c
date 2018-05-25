@@ -6,10 +6,14 @@
 //   You may obtain a copy of the License at
 //
 //       http://www.apache.org/licenses/LICENSE-2.0
+
+
 #include "../hog.h"
 #include "../conv.h"
 #include "gradientHist.h"
 #include <stdlib.h>
+#include<stdio.h>
+
 
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -19,6 +23,7 @@
 
 struct workspace {
     struct SeparableConvolutionContext dx,dy;
+    struct CropContext crp;
     struct gradientHistogram gh;
 };
 
@@ -43,12 +48,15 @@ static size_t grad_nbytes(const struct HOGContext *self) {
 static struct workspace* workspace_init(const struct HOGContext *self) {
     CHECK(self->logger,self->params.nbins>0);
     const int w=self->w,h=self->h;
+ 
     struct workspace* ws=malloc(sizeof(struct workspace));
     const float k[3]={-0.5,0,0.5},*ks[]={k,k};
     const unsigned nkx[]={3,0},nky[]={0,3};    
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     
+    ws->crp=CropInit(self->params.cell.w,self->params.cell.h,self->ips);
+   
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
                 .h=self->params.cell.h},
@@ -67,13 +75,15 @@ Error:
 struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
-    int w,int h)
+    int w,int h, struct interest_pnts *ips)
 {
     struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
+        .ips=ips,
         .workspace=workspace_init(&self)
+
     };
     return self;
 }
@@ -96,7 +106,8 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     // Compute gradients
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
-    GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
+    CropImage(&ws->crp,ws->dx.out,ws->dy.out,self->w,self->h);
+    //GradientHistogram(&ws->gh,ws->crp->out_side1_dx,ws->crp->out_side1.dy);
 
 }
 
@@ -108,7 +119,8 @@ size_t HOGOutputByteCount(const struct HOGContext *self) {
 void HOGOutputCopy(const struct HOGContext *self,void *buf,size_t nbytes) {
     if(!self->workspace) return;
     struct workspace *ws=(struct workspace*)self->workspace;
-    GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
+    CropOutputCopy(&ws->crp,buf,nbytes);
+    //GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
 }
 
 
