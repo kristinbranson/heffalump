@@ -23,7 +23,7 @@
 
 struct workspace {
     struct SeparableConvolutionContext dx,dy;
-    struct CropContext crp;
+    struct CropContext crpx,crpy;
     struct gradientHistogram gh;
 };
 
@@ -48,21 +48,22 @@ static size_t grad_nbytes(const struct HOGContext *self) {
 static struct workspace* workspace_init(const struct HOGContext *self) {
     CHECK(self->logger,self->params.nbins>0);
     const int w=self->w,h=self->h;
- 
+    
     struct workspace* ws=malloc(sizeof(struct workspace));
     const float k[3]={-0.5,0,0.5},*ks[]={k,k};
     const unsigned nkx[]={3,0},nky[]={0,3};    
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     
-    ws->crp=CropInit(self->params.cell.w,self->params.cell.h,self->ips);
+    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches);
+    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches);
    
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
                 .h=self->params.cell.h},
-        .image={ .w=self->w,
-                 .h=self->h,
-                 .pitch=self->w}, // FIXME: need the real input pitch here
+        .image={ .w=w, //needs to be changed no hard coding
+                 .h=h, // hard coding bad
+                 .pitch=w}, // FIXME: need the real input pitch here
         .nbins=self->params.nbins,
         .hog_bin =1
     };
@@ -75,13 +76,14 @@ Error:
 struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
-    int w,int h, struct interest_pnts *ips)
+    int w,int h, struct interest_pnts *ips,int npatches)
 {
     struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
         .ips=ips,
+        .npatches=npatches,
         .workspace=workspace_init(&self)
 
     };
@@ -93,6 +95,8 @@ void HOGTeardown(struct HOGContext *self) {
         struct workspace* ws=(struct workspace*)self->workspace;
         SeparableConvolutionTeardown(&ws->dx);
         SeparableConvolutionTeardown(&ws->dy);
+        CropTearDown(&ws->crpx);
+        CropTearDown(&ws->crpy);
         GradientHistogramDestroy(&ws->gh);
         free(self->workspace);
     }
@@ -106,8 +110,9 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     // Compute gradients
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
-    CropImage(&ws->crp,ws->dx.out,ws->dy.out,self->w,self->h);
-    //GradientHistogram(&ws->gh,ws->crp->out_side1_dx,ws->crp->out_side1.dy);
+    CropImage(&ws->crpx,ws->dx.out,self->w,self->h);
+    CropImage(&ws->crpy,ws->dy.out,self->w,self->h);
+    GradientHistogram(&ws->gh,ws->crpx.out,ws->crpy.out);
 
 }
 
@@ -119,8 +124,8 @@ size_t HOGOutputByteCount(const struct HOGContext *self) {
 void HOGOutputCopy(const struct HOGContext *self,void *buf,size_t nbytes) {
     if(!self->workspace) return;
     struct workspace *ws=(struct workspace*)self->workspace;
-    CropOutputCopy(&ws->crp,buf,nbytes);
-    //GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
+    //CropOutputCopy(&ws->crpx,buf,nbytes);
+    GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
 }
 
 

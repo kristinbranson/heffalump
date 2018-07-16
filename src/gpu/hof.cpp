@@ -29,7 +29,7 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params) 
+        workspace(logger_t logger,const struct HOFParameters& params, struct interest_pnts *ips,int npatches) 
         : logger(logger)
         {
             struct gradientHistogramParameters ghparams;
@@ -41,6 +41,9 @@ namespace gpu {
             ghparams.nbins=params.nbins;
             ghparams.hog_bin=0;
 
+      
+            //crpx=CropInit(params.cell.w,params.cell.h,ips,npatches);
+            //crpy=CropInit(params.cell.w,params.cell.h,ips,npatches);
             GradientHistogramInit(&gh,&ghparams,logger);
             lk_=LucasKanadeInitialize(logger,
                 params.input.w,params.input.h,params.input.pitch,params.lk);
@@ -49,6 +52,8 @@ namespace gpu {
 
         ~workspace() {
             GradientHistogramDestroy(&gh);
+            //CropTearDown(&crpy);
+            //CropTearDown(&crpx);
             LucasKanadeTeardown(&lk_);
         }
 
@@ -85,6 +90,8 @@ namespace gpu {
             LucasKanade(&lk_,input,(LucasKanadeScalarType)type);
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
+            //CropImage(&crpx,dx,lk_.w,lk_.h);
+            //CropImage(&crpy,dy,lk_.w,lk_.h);
             GradientHistogram(&gh,dx,dy);
         }
 
@@ -92,6 +99,8 @@ namespace gpu {
         logger_t logger;
         struct gradientHistogram gh;
         struct LucasKanadeContext lk_;
+        struct CropContext crpx;
+        struct CropContext crpy;
     };
 
 }}} // priv::hof::gpu
@@ -100,12 +109,12 @@ using namespace priv::hof::gpu;
 
 struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct HOFParameters params)
+    const struct HOFParameters params, struct interest_pnts *ips,int npatches)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,nullptr};
+    struct HOFContext self={logger,params,ips,npatches,nullptr};
     try {
-        ws=new workspace(logger,params);
+        ws=new workspace(logger,params,ips,npatches);
         self.workspace=ws;
     } catch(const std::exception &e) {
         delete ws;
@@ -138,7 +147,8 @@ size_t HOFOutputByteCount(const struct HOFContext *self) {
 void HOFOutputCopy(const struct HOFContext *self, void *buf, size_t nbytes) {
     auto ws=static_cast<struct workspace*>(self->workspace);    
     ws->copy_last_result(buf,nbytes);
-//    LucasKanadeCopyOutput(&ws->lk_,(float*)buf,nbytes);
+    //LucasKanadeCopyOutput(&ws->lk_,(float*)buf,nbytes);
+    //CropOutputCopy(&ws->crpx,buf,nbytes);
 }
 
 void HOFOutputStrides(const struct HOFContext *self,struct HOGFeatureDims *strides) {
