@@ -167,12 +167,13 @@ namespace gpu {
             //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
 
             //changed above equation to match opticalflow Lukas kanade - rutuja
-           out_dx[i]=(xunits/det)*(yy*xt-xy*yt);
-           out_dy[i]=(yunits/det)*(-xy*xt+xx*yt);
+           out_dx[i]=(xunits/det+1e-7)*(yy*xt-xy*yt);
+           out_dy[i]=(yunits/det+1e-7)*(-xy*xt+xx*yt);
         } else {
             out_dx[i]=0.0f;
             out_dy[i]=0.0f;
         }
+       
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
@@ -454,6 +455,7 @@ namespace gpu {
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
             }
+            cudaDeviceSynchronize(); // to make sure this kernel finishes before crop is called
         }
 
         size_t bytesof_input(enum LucasKanadeScalarType type) const {
@@ -477,7 +479,7 @@ namespace gpu {
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
                 CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-                //CUTRY(cudaMemcpyAsync(buf,stage3.yy.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,last,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
                 CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
@@ -569,6 +571,7 @@ void LucasKanadeTeardown(struct LucasKanadeContext *self) {
 void LucasKanade(struct LucasKanadeContext *self,const void *im,enum LucasKanadeScalarType type) {
     struct workspace* ws=(struct workspace*)self->workspace;
     ws->compute(im,type);
+    printf("first");
 }
 
 
