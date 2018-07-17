@@ -9,7 +9,7 @@
 #pragma once 
 #include <stddef.h>
 #include <stdint.h>
-#include "gpu/crop.h"
+//#include "gpu/crop.h"
 #ifndef H_NGC_HOG
 #define H_NGC_HOG
 
