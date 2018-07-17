@@ -29,7 +29,7 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params, struct interest_pnts *ips,int npatches) 
+        workspace(logger_t logger,const struct HOFParameters& params)//, struct interest_pnts *ips,int npatches) 
         : logger(logger)
         {
             struct gradientHistogramParameters ghparams;
@@ -112,9 +112,9 @@ struct HOFContext HOFInitialize(
     const struct HOFParameters params, struct interest_pnts *ips,int npatches)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,ips,npatches,nullptr};
+    struct HOFContext self={logger,params,nullptr};//,ips,npatches,nullptr};
     try {
-        ws=new workspace(logger,params,ips,npatches);
+        ws=new workspace(logger,params);//,ips,npatches);
         self.workspace=ws;
     } catch(const std::exception &e) {
         delete ws;

@@ -167,8 +167,8 @@ namespace gpu {
             //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
 
             //changed above equation to match opticalflow Lukas kanade - rutuja
-           out_dx[i]=(xunits/det+1e-7)*(yy*xt-xy*yt);
-           out_dy[i]=(yunits/det+1e-7)*(-xy*xt+xx*yt);
+           out_dx[i]=(xunits/(det+1e-7))*(yy*xt-xy*yt);
+           out_dy[i]=(yunits/(det+1e-7))*(-xy*xt+xx*yt);
         } else {
             out_dx[i]=0.0f;
             out_dy[i]=0.0f;
