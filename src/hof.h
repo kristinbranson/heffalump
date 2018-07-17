@@ -41,8 +41,6 @@ struct HOFParameters {
 struct HOFContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);    
     struct HOFParameters params;
-    //struct interest_pnts *ips;
-    //int npatches;
     void *workspace;
 };
 

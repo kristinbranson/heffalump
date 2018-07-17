@@ -29,7 +29,7 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params)//, struct interest_pnts *ips,int npatches) 
+        workspace(logger_t logger,const struct HOFParameters& params) 
         : logger(logger)
         {
             struct gradientHistogramParameters ghparams;
@@ -99,8 +99,8 @@ namespace gpu {
         logger_t logger;
         struct gradientHistogram gh;
         struct LucasKanadeContext lk_;
-        struct CropContext crpx;
-        struct CropContext crpy;
+        //struct CropContext crpx;
+        //struct CropContext crpy;
     };
 
 }}} // priv::hof::gpu
@@ -109,7 +109,7 @@ using namespace priv::hof::gpu;
 
 struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct HOFParameters params, struct interest_pnts *ips,int npatches)
+    const struct HOFParameters params)//, struct interest_pnts *ips,int npatches)
 {
     workspace *ws=nullptr;
     struct HOFContext self={logger,params,nullptr};//,ips,npatches,nullptr};
