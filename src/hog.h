@@ -37,7 +37,7 @@ struct HOGImage {
     int w;
     int h;
     int pitch;
-    struct interest_pnts* ips; 
+    //struct interest_pnts* ips; 
 };
 
 struct HOGParameters {
