@@ -23,7 +23,7 @@
 
 struct workspace {
     struct SeparableConvolutionContext dx,dy;
-    struct CropContext crpx,crpy;
+    //struct CropContext crpx,crpy;
     struct gradientHistogram gh;
 };
 
