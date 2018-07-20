@@ -127,7 +127,7 @@ __global__ void absmax4_k(float * __restrict__ out,const float4* __restrict__ in
         // init the per-warp max's using one warp
         // in case we don't run with 32 warps
         t[lane]=mx;
-        __threadfence(); // __threadfence_block() is insufficient
+        __syncthreads();//__threadfence(); // __threadfence_block() is insufficient
         t[warp]=warpmax(a);
         __syncthreads();
         if(warp==0)

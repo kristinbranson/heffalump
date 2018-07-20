@@ -10,12 +10,17 @@
 #ifndef H_NGC_GPU_LK
 #define H_NGC_GPU_LK
 
+#include "../lk.h"
+#include <cuda_runtime.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "../lk.h"
-#include <cuda_runtime.h>
+// rutuja commented
+
+//#include "../lk.h"
+//#include <cuda_runtime.h>
 
 
 cudaStream_t LucasKanadeOutputStream(const struct LucasKanadeContext *self);

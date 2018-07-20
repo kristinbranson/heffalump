@@ -149,8 +149,8 @@ namespace gpu {
         const float normx=1.0f/(mx+1e-3f);
         const float normy=1.0f/(my+1e-3f);
         const float normt=1.0f/(mt+1e-3f);
-        const float xunits=0.5f*(mx*mx+my*my)*mt/(mx*my*my);
-        const float yunits=0.5f*(mx*mx+my*my)*mt/(mx*mx*my);
+        const float xunits=(0.5f*(mx*mx+my*my)*mt)/(mx*my*my);
+        const float yunits=(0.5f*(mx*mx+my*my)*mt)/(mx*mx*my);
 
         const float xx= Ixx[i]*normx*normx;
         const float xy= Ixy[i]*normx*normy;
@@ -167,8 +167,8 @@ namespace gpu {
             //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
 
             //changed above equation to match opticalflow Lukas kanade - rutuja
-           out_dx[i]=(xunits/(det+1e-7))*(yy*xt-xy*yt);
-           out_dy[i]=(yunits/(det+1e-7))*(-xy*xt+xx*yt);
+           out_dx[i]=(xunits/(det+1e-8f))*(yy*xt-xy*yt);
+           out_dy[i]=(yunits/(det+1e-8f))*(-xy*xt+xx*yt);
         } else {
             out_dx[i]=0.0f;
             out_dy[i]=0.0f;
@@ -478,8 +478,8 @@ namespace gpu {
 
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
-                CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-                //CUTRY(cudaMemcpyAsync(buf,last,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+                CUTRY(cudaMemcpyAsync(buf,out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
                 CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
@@ -571,7 +571,6 @@ void LucasKanadeTeardown(struct LucasKanadeContext *self) {
 void LucasKanade(struct LucasKanadeContext *self,const void *im,enum LucasKanadeScalarType type) {
     struct workspace* ws=(struct workspace*)self->workspace;
     ws->compute(im,type);
-    printf("first");
 }
 
 
