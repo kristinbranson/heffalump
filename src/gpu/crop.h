@@ -20,23 +20,27 @@ struct interest_pnts{
 
 struct CropContext{
 
+    void *workspace;
     int ncells;
     int halfcropsz;
     struct interest_pnts *ips;
-    struct workspace *ws;
+    int npatches;
+    float *out;
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips);
+struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches);
 
-void CropImage(struct CropContext *self, const float *dx,const float *dy, int width, int height);
+void CropImage(const struct CropContext *self, const float *in, int width, int height);
 
 void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz);
  
 size_t CropOutputByteCount(const struct CropContext *self);
+
+void CropTearDown(const struct CropContext *self);
 
 #ifdef __cplusplus
 }

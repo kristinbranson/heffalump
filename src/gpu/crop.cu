@@ -1,3 +1,12 @@
+//   Copyright 2017 Vidrio Technologies
+//   by Rutuja Patil <patilr@janelia.hhmi.org>
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+
 #include"crop.h"
 #include<cuda_runtime_api.h>
 #include<stdio.h>
@@ -17,26 +26,18 @@ inline void gpuAssert(cudaError_t code, const char *file,
 struct workspace{  
  
     workspace(struct CropContext *crp){
-  
-        gpuErrChk(cudaMalloc(&out_side1,nbytes_cropsz(crp->halfcropsz)));
-        gpuErrChk(cudaMalloc(&out_side2,nbytes_cropsz(crp->halfcropsz)));
-        gpuErrChk(cudaMalloc(&out_side3,nbytes_cropsz(crp->halfcropsz)));
-        gpuErrChk(cudaMalloc(&out_front1,nbytes_cropsz(crp->halfcropsz)));
-        gpuErrChk(cudaMalloc(&out_front2,nbytes_cropsz(crp->halfcropsz)));
+      
+        gpuErrChk(cudaMalloc(&out,nbytes_cropsz(crp->halfcropsz,crp->npatches)));
     }
 
     ~workspace(){
     
-        gpuErrChk(cudaFree(&out_side1));
-        gpuErrChk(cudaFree(&out_side2));
-        gpuErrChk(cudaFree(&out_side3));
-        gpuErrChk(cudaFree(&out_front1));
-        gpuErrChk(cudaFree(&out_front2));
+        gpuErrChk(cudaFree(out));
     }
 
-    size_t nbytes_cropsz(int halfcropsz){
+    size_t nbytes_cropsz(int halfcropsz,int npatches){
         int cropsz  = 2*halfcropsz;
-        return((2*cropsz*cropsz)*sizeof(float));  
+        return((npatches*cropsz*cropsz)*sizeof(float));  
     }
 
     size_t result_bytes(int size){
@@ -45,111 +46,126 @@ struct workspace{
     }
 
     void copy_result(void* buf,size_t size){
-
-        gpuErrChk(cudaMemcpyAsync(buf,out_front2,size,cudaMemcpyDeviceToHost));
+        gpuErrChk(cudaMemcpyAsync(buf,out,size,cudaMemcpyDeviceToHost));
 
     }
 
-    float *out_side1, *out_side2, *out_side3; 
-    float *out_front1, *out_front2; // device pointers 
+    float *out;
 };
 
 
-
-__global__ void crop(float *out_x, float *out_y,const float *in_x, const float *in_y,int loc_x,int loc_y,int halfsz, int w,int h){
-
+__global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, int w,int h, int view_flag){
 
         const int idx = threadIdx.x + blockIdx.x*blockDim.x;
         const int idy = threadIdx.y + blockIdx.y*blockDim.y;
         const int x_start = loc_x - halfsz;
         const int y_start = loc_y - halfsz;
+        //const int x_end = loc_x + halfsz;
+        //const int y_end = loc_y + halfsz;
 
         const int locx_id = x_start + idx;
         const int locy_id = y_start + idy;
         const int cropsz = 2*halfsz;
+        int height = 0;
 
-        if(x_start > 0 && y_start > 0){
+        if(view_flag)
+            height = h/2;
+        else
+            height = h;
+        
+        if(x_start > 0 && y_start > 0 && locx_id < w && locy_id < height){
 
-            out_x[idx + idy*cropsz] = in_x[locx_id + locy_id*w];
-            out_y[idx + idy*cropsz] = in_y[locx_id + locy_id*w];
+            out[idx + idy*cropsz] = in[locx_id + locy_id*w];
 
         }else{
 
-            if(locx_id > 0 && locy_id > 0){
+            if(locx_id >= 0 && locy_id >= 0 && locx_id < w && locy_id < height){
 
-                out_x[idx + idy*cropsz] = in_x[locx_id + locy_id*w];
-                out_y[idx + idy*cropsz] = in_y[locx_id + locy_id*w];
+                out[idx + idy*cropsz] = in[locx_id + locy_id*w];
            
             }else{
 
-                out_x[idx + idy*cropsz] = 0;
-                out_y[idx + idy*cropsz] = 0;
+                out[idx + idy*cropsz] = 0;
 
-            }           
-        
+            }                   
         }
 
 }
 
 
-void cropPatch(struct CropContext *self, const float *dx, const float *dy,int w,int h){
+void cropPatch(const struct CropContext *self, const float *in,int w,int h){
+
+    if(!self->workspace) return;
+    int cropsz =2*self->halfcropsz;
+    int n = cropsz*cropsz;
+    float* out = self->out;
+    int side = 1;
 
     dim3 block(32,8);
-    int cropsz =2*self->halfcropsz;
     dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
-    int n = cropsz*cropsz;
-    float* out_dx = self->ws->out_side1;
-    float* out_dy = self->ws->out_side1 + n;
-    crop<<<grid,block>>>(out_dx,out_dy,dx,dy,self->ips->side[0][1],self->ips->front[0][0],self->halfcropsz,w,h);
-    out_dx = self->ws->out_side2;
-    out_dy = self->ws->out_side2 + n;
-    crop<<<grid,block>>>(out_dx,out_dy,dx,dy,self->ips->side[1][1],self->ips->side[1][0],self->halfcropsz,w,h);
-    out_dx = self->ws->out_side3;
-    out_dy = self->ws->out_side3 + n;
-    crop<<<grid,block>>>(out_dx,out_dy,dx,dy,self->ips->side[2][1],self->ips->side[2][0],self->halfcropsz,w,h);
-    out_dx = self->ws->out_front1;
-    out_dy = self->ws->out_front1 + n;
-    crop<<<grid,block>>>(out_dx,out_dy,dx,dy,self->ips->front[0][1],self->ips->front[0][0]+h/2,self->halfcropsz,w,h);
-    out_dx = self->ws->out_front2;
-    out_dy = self->ws->out_front2 + n;
-    crop<<<grid,block>>>(out_dx,out_dy,dx,dy,self->ips->front[1][1],self->ips->front[1][0]+h/2,self->halfcropsz,w,h);
 
+    crop<<<grid,block>>>(out,in,self->ips->side[0][1],self->ips->side[0][0],self->halfcropsz,w,h,side);
+    cudaGetLastError();
+    out = self->out + n;
+    crop<<<grid,block>>>(out,in,self->ips->side[1][1],self->ips->side[1][0],self->halfcropsz,w,h,side);
+    cudaGetLastError();
+    out = self->out + 2*n;
+    crop<<<grid,block>>>(out,in,self->ips->side[2][1],self->ips->side[2][0],self->halfcropsz,w,h,side);
+    cudaGetLastError();
+    out = self->out + 3*n;
+    
+    side = 0;
+    crop<<<grid,block>>>(out,in,self->ips->front[0][1],self->ips->front[0][0]+h/2,self->halfcropsz,w,h,side);
+    cudaGetLastError();
+    out = self->out + 4*n;
+    crop<<<grid,block>>>(out,in,self->ips->front[1][1],self->ips->front[1][0]+h/2,self->halfcropsz,w,h,side);
+    cudaGetLastError();
+    cudaDeviceSynchronize();
+    
 }
 
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips){
+struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches){
 
-    int ncells=6;
+    int ncells=10;
     assert(cellw==cellh);
     int halfcropsz = (ncells*cellw)/2;
-    struct CropContext crp={
-        .ncells=6,
-        .halfcropsz=halfcropsz,
-        .ips=ips,
-        .ws=new workspace(&crp)
-    };
-
+    struct CropContext crp={0};
+    crp.ncells=10;
+    crp.halfcropsz=halfcropsz;
+    crp.ips=ips;
+    crp.npatches=npatches;
+    workspace *ws = new workspace(&crp);
+    crp.workspace=ws;
+    crp.out=ws->out;
     return crp;
 }
 
-void CropImage(struct CropContext *self, const float *dx, const float *dy, int width, int height){
+void CropImage(const struct CropContext *self, const float *in, int width, int height){
 
-    cropPatch(self,dx,dy,width,height);
-
+    if(!self->workspace) return;
+    cropPatch(self,in,width,height);
 }
-
 
 void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz){
     
-    if(!self->ws) return;
-    self->ws->copy_result(buf,sz);        
+    if(!self->workspace) return;
+    workspace *ws = (workspace*)self->workspace;
+    ws->copy_result(buf,sz);        
 
 }
 
-
 size_t CropOutputByteCount(const struct CropContext *self){
 
-    if(!self->ws) return 0;
+    if(!self->workspace) return 0;
     int cropsz = self->halfcropsz*2;
-    return(self->ws->result_bytes(2*cropsz*cropsz));
+    return(((workspace*)self->workspace)->result_bytes(self->npatches*cropsz*cropsz));
+
+}
+
+void CropTearDown(const struct CropContext *self){
+
+   if(!self->workspace) return;
+   workspace *ws = (workspace*)self->workspace;
+   delete ws;
 
 }

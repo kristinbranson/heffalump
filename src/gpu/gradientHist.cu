@@ -92,7 +92,7 @@ namespace gpu {
         {
             const int ix=threadIdx.x+blockIdx.x*blockDim.x;
             const int iy=threadIdx.y+blockIdx.y*blockDim.y;
-       
+            
             if(ix<w && iy<h) {
                 const float x=dx[ix+iy*p];
                 const float y=dy[ix+iy*p];
@@ -224,8 +224,11 @@ namespace gpu {
                     c01=m*(1.0f-mx)*      my *cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
                     c10=m*      mx *(1.0f-my)*cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
                     c11=m*      mx *      my *cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
-
-                
+                    /*c00 = 2.00;
+                    c01 = 1.00;
+                    c10 = 3.00;
+                    c11 = 9.00;*/
+                 
 #if 0                
                     // For benchmarking to check the cost of using the atomics.
                     // write  something out just to force the optimizer not to 

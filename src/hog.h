@@ -9,7 +9,7 @@
 #pragma once 
 #include <stddef.h>
 #include <stdint.h>
-//#include "gpu/crop.h"
+#include "gpu/crop.h"
 #ifndef H_NGC_HOG
 #define H_NGC_HOG
 
@@ -55,15 +55,15 @@ struct HOGContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     int w,h;
     struct HOGParameters params;
-    //struct interest_pnts *ips;
-    //int npatches;
+    struct interest_pnts *ips;
+    int npatches;
     void *workspace;     
 };
 
 struct HOGContext HOGInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOGParameters params, 
-    int w, int h);// struct interest_pnts *ips,int npatches);
+    int w, int h,struct interest_pnts *ips,int npatches);
 
 void HOGTeardown(struct HOGContext *context);
 
