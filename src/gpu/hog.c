@@ -55,8 +55,8 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     
-    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches);
-    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches);
+    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
+    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
    
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
@@ -76,7 +76,7 @@ Error:
 struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
-    int w,int h,struct interest_pnts *ips,int npatches)
+    int w,int h,struct interest_pnts *ips,int npatches,int ncells)
 {
     struct HOGContext self={
         .logger=logger,
@@ -84,6 +84,7 @@ struct HOGContext HOGInitialize(
         .w=w,.h=h,
         .ips=ips,
         .npatches=npatches,
+        .ncells=ncells,
         .workspace=workspace_init(&self)
 
     };

@@ -27,12 +27,13 @@ struct CropContext{
     int npatches;
     float *out;
 };
+// some of the above parameters could be written as a crop parameter struct
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches);
+struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches,int ncells);
 
 void CropImage(const struct CropContext *self, const float *in, int width, int height);
 

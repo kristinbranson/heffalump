@@ -37,7 +37,6 @@ struct HOGImage {
     int w;
     int h;
     int pitch;
-    //struct interest_pnts* ips; 
 };
 
 struct HOGParameters {
@@ -57,13 +56,14 @@ struct HOGContext {
     struct HOGParameters params;
     struct interest_pnts *ips;
     int npatches;
+    int ncells;
     void *workspace;     
 };
 
 struct HOGContext HOGInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOGParameters params, 
-    int w, int h,struct interest_pnts *ips,int npatches);
+    int w, int h,struct interest_pnts *ips,int npatches,int ncells);
 
 void HOGTeardown(struct HOGContext *context);
 

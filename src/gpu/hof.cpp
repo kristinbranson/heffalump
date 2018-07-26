@@ -29,19 +29,19 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params,struct interest_pnts *ips,int npatches) 
+        workspace(logger_t logger,const struct HOFParameters& params,struct interest_pnts *ips,int npatches,int ncells) 
         : logger(logger)
         {
 
-            crpx=CropInit(params.cell.w,params.cell.h,ips,npatches);
-            crpy=CropInit(params.cell.w,params.cell.h,ips,npatches);
+            crpx=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells);
+            crpy=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells);
 
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
-            ghparams.image.w=params.cell.w*crpx.ncells;//params.input.w;
-            ghparams.image.h=params.cell.w*crpx.ncells*npatches;//params.input.h;
-            ghparams.image.pitch=params.cell.w*crpx.ncells;//params.input.pitch;
+            ghparams.image.w=params.cell.w*ncells;//params.input.w;
+            ghparams.image.h=params.cell.w*ncells*npatches;//params.input.h;
+            ghparams.image.pitch=params.cell.w*ncells;//params.input.pitch;
             ghparams.nbins=params.nbins;
             ghparams.hog_bin=0;
 
@@ -85,6 +85,7 @@ namespace gpu {
 
         void copy_last_result(void *buf,size_t nbytes) const {
             GradientHistogramCopyLastResult(&gh,buf,nbytes);
+            //CropOutputCopy(&crpx,buf,nbytes);
         }
 
         void compute(const void *input,enum HOFScalarType type) {    
@@ -111,12 +112,12 @@ using namespace priv::hof::gpu;
 
 struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct HOFParameters params,struct interest_pnts *ips,int npatches)
+    const struct HOFParameters params,struct interest_pnts *ips,int npatches,int ncells)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,ips,npatches,nullptr};
+    struct HOFContext self={logger,params,ips,npatches,ncells,nullptr};
     try {
-        ws=new workspace(logger,params,ips,npatches);
+        ws=new workspace(logger,params,ips,npatches,ncells);
         self.workspace=ws;
     } catch(const std::exception &e) {
         delete ws;

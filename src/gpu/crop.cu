@@ -60,35 +60,61 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, 
         const int idy = threadIdx.y + blockIdx.y*blockDim.y;
         const int x_start = loc_x - halfsz;
         const int y_start = loc_y - halfsz;
-        //const int x_end = loc_x + halfsz;
-        //const int y_end = loc_y + halfsz;
+        const int x_end = loc_x + halfsz;
+        const int y_end = loc_y + halfsz;
 
         const int locx_id = x_start + idx;
         const int locy_id = y_start + idy;
         const int cropsz = 2*halfsz;
         int height = 0;
+        int xlim, ylim;
 
-        if(view_flag)
-            height = h/2;
-        else
-            height = h;
-        
-        if(x_start > 0 && y_start > 0 && locx_id < w && locy_id < height){
-
-            out[idx + idy*cropsz] = in[locx_id + locy_id*w];
-
+        // set the end limits for the crop
+        if(x_end < w){          
+            xlim = x_end;        
         }else{
+            xlim = w;
+        }
+        
+        if(view_flag){
+            height = h/2;
+        }else{
+            height = h;
+        }
 
-            if(locx_id >= 0 && locy_id >= 0 && locx_id < w && locy_id < height){
+        if(y_end < height){
+            ylim = y_end;
+        }else{
+            ylim = height;
+        }
+        
+        // crop patch
+        if(x_start > 0 && y_start > 0){
+
+            if(locx_id < xlim && locy_id < ylim){
 
                 out[idx + idy*cropsz] = in[locx_id + locy_id*w];
-           
+
             }else{
+               
+                out[idx + idy*cropsz] = 0;    
+            }
+  
+        }else if(locx_id >= 0 && locy_id >=0){
 
-                out[idx + idy*cropsz] = 0;
+            if(locx_id < xlim && locy_id < ylim){
 
-            }                   
-        }
+                out[idx + idy*cropsz] = in[locx_id + locy_id*w];
+
+            }else{
+                   
+               out[idx + idy*cropsz] = 0;
+            }
+           
+       }else{
+
+           out[idx + idy*cropsz] = 0;                               
+      }
 
 }
 
@@ -104,6 +130,8 @@ void cropPatch(const struct CropContext *self, const float *in,int w,int h){
     dim3 block(32,8);
     dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
 
+
+    // crop for number of side views
     crop<<<grid,block>>>(out,in,self->ips->side[0][1],self->ips->side[0][0],self->halfcropsz,w,h,side);
     cudaGetLastError();
     out = self->out + n;
@@ -114,6 +142,7 @@ void cropPatch(const struct CropContext *self, const float *in,int w,int h){
     cudaGetLastError();
     out = self->out + 3*n;
     
+    // crop for number of front views
     side = 0;
     crop<<<grid,block>>>(out,in,self->ips->front[0][1],self->ips->front[0][0]+h/2,self->halfcropsz,w,h,side);
     cudaGetLastError();
@@ -124,13 +153,14 @@ void cropPatch(const struct CropContext *self, const float *in,int w,int h){
     
 }
 
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches){
 
-    int ncells=10;
+// Initialize params for a crop
+struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches,int ncells){
+
     assert(cellw==cellh);
     int halfcropsz = (ncells*cellw)/2;
     struct CropContext crp={0};
-    crp.ncells=10;
+    crp.ncells=ncells;
     crp.halfcropsz=halfcropsz;
     crp.ips=ips;
     crp.npatches=npatches;
@@ -140,12 +170,14 @@ struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int np
     return crp;
 }
 
+//compute the crop
 void CropImage(const struct CropContext *self, const float *in, int width, int height){
 
     if(!self->workspace) return;
     cropPatch(self,in,width,height);
 }
 
+//copy the crop output 
 void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz){
     
     if(!self->workspace) return;
@@ -154,6 +186,7 @@ void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz){
 
 }
 
+// calculate the number of crop output image bytes
 size_t CropOutputByteCount(const struct CropContext *self){
 
     if(!self->workspace) return 0;
@@ -162,6 +195,7 @@ size_t CropOutputByteCount(const struct CropContext *self){
 
 }
 
+// delete the crop context
 void CropTearDown(const struct CropContext *self){
 
    if(!self->workspace) return;
