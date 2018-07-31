@@ -11,6 +11,7 @@ add_subdirectory(cpu/pdollar gradientHist)
 
 set(tgt heffalump_gpu)
 cuda_add_library(${tgt} STATIC 
+    crop.h gpu/crop.cu
     conv.h gpu/conv.h gpu/conv.cu
     gpu/gradientHist.h gpu/gradientHist.cu
     gpu/hog.c
@@ -41,3 +42,4 @@ set_property(TARGET ${tgt} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 install(FILES conv.h lk.h hog.h hof.h version.h DESTINATION include/heffalump)
 install(TARGETS heffalump_gpu heffalump_cpu DESTINATION lib)
+#install(TARGETS heffalump_gpu DESTINATION lib)
