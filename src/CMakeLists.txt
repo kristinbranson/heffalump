@@ -35,11 +35,12 @@ add_library(${tgt} STATIC
     version.h version.c
 )
 target_link_libraries(${tgt} gradientHist)
+
 target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 set_property(TARGET ${tgt} PROPERTY CXX_STANDARD 11)
 set_property(TARGET ${tgt} PROPERTY C_STANDARD   99)
 set_property(TARGET ${tgt} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-install(FILES conv.h lk.h hog.h hof.h version.h DESTINATION include/heffalump)
+install(FILES crop.h conv.h lk.h hog.h hof.h version.h DESTINATION include/heffalump)
 install(TARGETS heffalump_gpu heffalump_cpu DESTINATION lib)
 #install(TARGETS heffalump_gpu DESTINATION lib)
