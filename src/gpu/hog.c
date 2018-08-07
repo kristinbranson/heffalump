@@ -57,13 +57,13 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     
     ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
     ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
-   
+ 
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
                 .h=self->params.cell.h},
-        .image={ .w=(self->params.cell.w)*(ws->crpx.ncells), 
-                 .h=(self->params.cell.h*ws->crpx.ncells)*self->npatches, 
-                 .pitch=(self->params.cell.w)*(ws->crpx.ncells)}, // FIXME: need the real input pitch here
+        .image={ .w=(self->params.cell.w)*(ws->crpx.ncells)*self->npatches, 
+                 .h=(self->params.cell.h*ws->crpx.ncells), 
+                 .pitch=(self->params.cell.w)*(ws->crpx.ncells)*self->npatches}, // FIXME: need the real input pitch here
         .nbins=self->params.nbins,
         .hog_bin =1
     };
@@ -126,6 +126,8 @@ void HOGOutputCopy(const struct HOGContext *self,void *buf,size_t nbytes) {
     if(!self->workspace) return;
     struct workspace *ws=(struct workspace*)self->workspace;
     GradientHistogramCopyLastResult(&ws->gh,buf,features_nbytes(self));
+    //CropOutputCopy(&ws->crpx,buf,nbytes);
+    //SeparableConvolutionOutputCopy(&ws->dx,buf,nbytes);
 }
 
 

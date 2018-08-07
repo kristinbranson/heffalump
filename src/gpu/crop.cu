@@ -54,7 +54,7 @@ struct workspace{
 };
 
 
-__global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, int w,int h, int view_flag){
+__global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, int w,int h, int view_flag,int counter){
 
         const int idx = threadIdx.x + blockIdx.x*blockDim.x;
         const int idy = threadIdx.y + blockIdx.y*blockDim.y;
@@ -66,21 +66,33 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, 
         const int locx_id = x_start + idx;
         const int locy_id = y_start + idy;
         const int cropsz = 2*halfsz;
-        int height = 0;
+        int height = h;
         int xlim, ylim;
 
         // set the end limits for the crop
-        if(x_end < w){          
-            xlim = x_end;        
+        if(view_flag){
+      
+            if(x_end < w/2){  
+        
+                xlim = x_end;  
+      
+            }else{
+                xlim = w/2;
+            }
         }else{
-            xlim = w;
+
+            if(x_end < w){
+
+                xlim = x_end;
+
+            }else{
+
+                xlim = w;
+            }
+
+
         }
         
-        if(view_flag){
-            height = h/2;
-        }else{
-            height = h;
-        }
 
         if(y_end < height){
             ylim = y_end;
@@ -93,27 +105,27 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz, 
 
             if(locx_id < xlim && locy_id < ylim){
 
-                out[idx + idy*cropsz] = in[locx_id + locy_id*w];
+                out[(counter*cropsz) + idx + (idy*cropsz*5)] = in[locx_id + locy_id*w];
 
             }else{
                
-                out[idx + idy*cropsz] = 0;    
+                out[(counter*cropsz) + idx + (idy*cropsz*5)] = 0;    
             }
   
         }else if(locx_id >= 0 && locy_id >=0){
 
             if(locx_id < xlim && locy_id < ylim){
 
-                out[idx + idy*cropsz] = in[locx_id + locy_id*w];
+                out[(counter*cropsz) + idx + (idy*cropsz*5)] = in[locx_id + locy_id*w];
 
             }else{
                    
-               out[idx + idy*cropsz] = 0;
+               out[(counter*cropsz) + idx + (idy*cropsz*5)] = 0;
             }
            
        }else{
 
-           out[idx + idy*cropsz] = 0;                               
+           out[(counter*cropsz) + idx + (idy*cropsz*5)] = 0;                               
       }
 
 }
@@ -125,29 +137,24 @@ void cropPatch(const struct CropContext *self, const float *in,int w,int h){
     int cropsz =2*self->halfcropsz;
     int n = cropsz*cropsz;
     float* out = self->out;
-    int side = 1;
+    int side=1;
 
     dim3 block(32,8);
     dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
 
-
     // crop for number of side views
-    crop<<<grid,block>>>(out,in,self->ips->side[0][1],self->ips->side[0][0],self->halfcropsz,w,h,side);
+    crop<<<grid,block>>>(out,in,self->ips->side[0][0],self->ips->side[0][1],self->halfcropsz,w,h,side,0);
     cudaGetLastError();
-    out = self->out + n;
-    crop<<<grid,block>>>(out,in,self->ips->side[1][1],self->ips->side[1][0],self->halfcropsz,w,h,side);
+    crop<<<grid,block>>>(out,in,self->ips->side[1][0],self->ips->side[1][1],self->halfcropsz,w,h,side,1);
     cudaGetLastError();
-    out = self->out + 2*n;
-    crop<<<grid,block>>>(out,in,self->ips->side[2][1],self->ips->side[2][0],self->halfcropsz,w,h,side);
+    crop<<<grid,block>>>(out,in,self->ips->side[2][0],self->ips->side[2][1],self->halfcropsz,w,h,side,2);
     cudaGetLastError();
-    out = self->out + 3*n;
     
     // crop for number of front views
-    side = 0;
-    crop<<<grid,block>>>(out,in,self->ips->front[0][1],self->ips->front[0][0]+h/2,self->halfcropsz,w,h,side);
+    side=0; //flag to tell the kernel tht is front view
+    crop<<<grid,block>>>(out,in,self->ips->front[0][0]+(w/2),self->ips->front[0][1],self->halfcropsz,w,h,side,3);
     cudaGetLastError();
-    out = self->out + 4*n;
-    crop<<<grid,block>>>(out,in,self->ips->front[1][1],self->ips->front[1][0]+h/2,self->halfcropsz,w,h,side);
+    crop<<<grid,block>>>(out,in,self->ips->front[1][0]+(w/2),self->ips->front[1][1],self->halfcropsz,w,h,side,4);
     cudaGetLastError();
     cudaDeviceSynchronize();
     

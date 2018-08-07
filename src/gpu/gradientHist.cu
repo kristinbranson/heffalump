@@ -96,7 +96,7 @@ namespace gpu {
             if(ix<w && iy<h) {
                 const float x=dx[ix+iy*p];
                 const float y=dy[ix+iy*p];
-                float theta = atan2f(x,y);
+                float theta = atan2f(y,x);
                 float theta_final = 0;
                 // if hog wrap around the theta values between 0 to pi - //rutuja
                 if(hog_bin==0){

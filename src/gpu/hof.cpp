@@ -39,9 +39,9 @@ namespace gpu {
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
-            ghparams.image.w=params.cell.w*ncells;//params.input.w;
-            ghparams.image.h=params.cell.w*ncells*npatches;//params.input.h;
-            ghparams.image.pitch=params.cell.w*ncells;//params.input.pitch;
+            ghparams.image.w=params.cell.w*ncells*npatches;//params.input.w;
+            ghparams.image.h=params.cell.w*ncells;//params.input.h;
+            ghparams.image.pitch=params.cell.w*ncells*npatches;//params.input.pitch;
             ghparams.nbins=params.nbins;
             ghparams.hog_bin=0;
 
@@ -86,6 +86,7 @@ namespace gpu {
         void copy_last_result(void *buf,size_t nbytes) const {
             GradientHistogramCopyLastResult(&gh,buf,nbytes);
             //CropOutputCopy(&crpx,buf,nbytes);
+            //LucasKanadeCopyOutput(&lk_, (float*)buf,nbytes);
         }
 
         void compute(const void *input,enum HOFScalarType type) {    
