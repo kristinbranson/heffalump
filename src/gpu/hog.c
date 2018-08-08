@@ -55,15 +55,18 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     
-    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
-    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,self->ncells);
+     
+    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,
+                          self->ncells,self->crop_flag);
+    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,
+                          self->ncells,self->crop_flag);    
  
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
                 .h=self->params.cell.h},
-        .image={ .w=(self->params.cell.w)*(ws->crpx.ncells)*self->npatches, 
-                 .h=(self->params.cell.h*ws->crpx.ncells), 
-                 .pitch=(self->params.cell.w)*(ws->crpx.ncells)*self->npatches}, // FIXME: need the real input pitch here
+        .image={ .w= (self->crop_flag) ? ((self->params.cell.w)*(ws->crpx.ncells)*self->npatches) : w, 
+                 .h= (self->crop_flag) ? (self->params.cell.h*ws->crpx.ncells) : h, 
+                 .pitch=(self->crop_flag) ? ((self->params.cell.w)*(ws->crpx.ncells)*self->npatches) : w}, // FIXME: need the real input pitch here
         .nbins=self->params.nbins,
         .hog_bin =1
     };
@@ -76,7 +79,7 @@ Error:
 struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
-    int w,int h,struct interest_pnts *ips,int npatches,int ncells)
+    int w,int h,struct interest_pnts *ips,int npatches,int ncells,int crop_flag)
 {
     struct HOGContext self={
         .logger=logger,
@@ -85,6 +88,7 @@ struct HOGContext HOGInitialize(
         .ips=ips,
         .npatches=npatches,
         .ncells=ncells,
+        .crop_flag=crop_flag,
         .workspace=workspace_init(&self)
 
     };
@@ -111,9 +115,14 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     // Compute gradients
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
-    CropImage(&ws->crpx,ws->dx.out,self->w,self->h);
-    CropImage(&ws->crpy,ws->dy.out,self->w,self->h);
-    GradientHistogram(&ws->gh,ws->crpx.out,ws->crpy.out);
+ 
+    if(self->crop_flag){
+        CropImage(&ws->crpx,ws->dx.out,self->w,self->h);
+        CropImage(&ws->crpy,ws->dy.out,self->w,self->h);
+        GradientHistogram(&ws->gh,ws->crpx.out,ws->crpy.out);
+    }else{
+        GradientHistogram(&ws->gh,ws->dx.out,ws->dy.out);
+    }
 
 }
 

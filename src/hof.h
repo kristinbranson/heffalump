@@ -44,12 +44,13 @@ struct HOFContext {
     struct interest_pnts *ips;
     int npatches;
     int ncells;
+    int crop_flag;
     void *workspace;
 };
 
 struct HOFContext HOFInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
-    const struct HOFParameters params, struct interest_pnts *ips,int npatches,int ncells);
+    const struct HOFParameters params, struct interest_pnts *ips,int npatches,int ncells,int crop_flag);
 
 void HOFTeardown(struct HOFContext *context);
 

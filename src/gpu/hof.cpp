@@ -29,23 +29,21 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params,struct interest_pnts *ips,int npatches,int ncells) 
+        workspace(logger_t logger,const struct HOFParameters& params,struct interest_pnts *ips,int npatches,int ncells,int crop_flag) 
         : logger(logger)
         {
 
-            crpx=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells);
-            crpy=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells);
-
+            crpx=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells,crop_flag);
+            crpy=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells,crop_flag);
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
-            ghparams.image.w=params.cell.w*ncells*npatches;//params.input.w;
-            ghparams.image.h=params.cell.w*ncells;//params.input.h;
-            ghparams.image.pitch=params.cell.w*ncells*npatches;//params.input.pitch;
+            ghparams.image.w= (crop_flag) ? params.cell.w*ncells*npatches : params.input.w;
+            ghparams.image.h= (crop_flag) ? params.cell.w*ncells : params.input.h;
+            ghparams.image.pitch= (crop_flag) ? params.cell.w*ncells*npatches : params.input.pitch;
             ghparams.nbins=params.nbins;
             ghparams.hog_bin=0;
 
-      
             GradientHistogramInit(&gh,&ghparams,logger);
             lk_=LucasKanadeInitialize(logger,
                 params.input.w,params.input.h,params.input.pitch,params.lk);
@@ -94,9 +92,13 @@ namespace gpu {
             LucasKanade(&lk_,input,(LucasKanadeScalarType)type);
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
-            CropImage(&crpx,dx,lk_.w,lk_.h);
-            CropImage(&crpy,dy,lk_.w,lk_.h);
-            GradientHistogram(&gh,crpx.out,crpy.out);
+            if(crpx.crop_flag){
+              CropImage(&crpx,dx,lk_.w,lk_.h);
+              CropImage(&crpy,dy,lk_.w,lk_.h);
+              GradientHistogram(&gh,crpx.out,crpy.out);
+            }else{
+              GradientHistogram(&gh,dx,dy);
+            }
         }
 
 //    private: 
@@ -113,12 +115,12 @@ using namespace priv::hof::gpu;
 
 struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct HOFParameters params,struct interest_pnts *ips,int npatches,int ncells)
+    const struct HOFParameters params,struct interest_pnts *ips,int npatches,int ncells,int crop_flag)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,ips,npatches,ncells,nullptr};
+    struct HOFContext self={logger,params,ips,npatches,ncells,crop_flag,nullptr};
     try {
-        ws=new workspace(logger,params,ips,npatches,ncells);
+        ws=new workspace(logger,params,ips,npatches,ncells,crop_flag);
         self.workspace=ws;
     } catch(const std::exception &e) {
         delete ws;
