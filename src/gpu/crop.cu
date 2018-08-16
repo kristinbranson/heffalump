@@ -27,7 +27,7 @@ struct workspace{
  
     workspace(struct CropContext *crp){
      
-        gpuErrChk(cudaMalloc(&out,nbytes_cropsz(crp->halfcropsz,crp->npatches)));
+        gpuErrChk(cudaMalloc(&out,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
              
     }
 
@@ -71,34 +71,25 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz,i
         int xlim, ylim;
 
         // set the end limits for the crop
-        if(view_flag){
       
-            if(x_end < w/2){  
+        if(x_end < w){  
         
-                xlim = x_end;  
+            xlim = x_end;  
       
-            }else{
-                xlim = w/2;
-            }
         }else{
 
-            if(x_end < w){
-
-                xlim = x_end;
-
-            }else{
-
-                xlim = w;
-            }
-
-
+            xlim = w;
         }
         
 
         if(y_end < height){
+
             ylim = y_end;
+
         }else{
+
             ylim = height;
+
         }
         
         // crop patch
@@ -139,48 +130,33 @@ void cropPatch(const struct CropContext *self,const float *in,int w,int h){
     int cropsz =2*self->halfcropsz;
     float* out = self->out;
     int side;
-
+   
+    dim3 block(32,8);
+    dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
+    // crop for number of side views
+    side=1;
     
-        dim3 block(32,8);
-        dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
-
-        // crop for number of side views
-        side=1;
-        crop<<<grid,block>>>(out,in,self->ips->side[0][0],self->ips->side[0][1],self->halfcropsz,self->npatches,w,h,side,0);
+    for(int i = 0;i < self->crp_params.npatches;i++){
+        crop<<<grid,block>>>(out,in,self->crp_params.interest_pnts[2*i],self->crp_params.interest_pnts[(2*i)+1],self->halfcropsz,self->crp_params.npatches,w,h,side,i);
         cudaGetLastError();
-        crop<<<grid,block>>>(out,in,self->ips->side[1][0],self->ips->side[1][1],self->halfcropsz,self->npatches,w,h,side,1);
-        cudaGetLastError();
-        crop<<<grid,block>>>(out,in,self->ips->side[2][0],self->ips->side[2][1],self->halfcropsz,self->npatches,w,h,side,2);
-        cudaGetLastError();
-    
-        // crop for number of front views
-        side=0; //flag to tell the kernel tht is front view
-        crop<<<grid,block>>>(out,in,self->ips->front[0][0]+(w/2),self->ips->front[0][1],self->halfcropsz,self->npatches,w,h,side,3);
-        cudaGetLastError();
-        crop<<<grid,block>>>(out,in,self->ips->front[1][0]+(w/2),self->ips->front[1][1],self->halfcropsz,self->npatches,w,h,side,4);
-        cudaGetLastError();
-        cudaDeviceSynchronize();
+    }
+   
+   cudaDeviceSynchronize();
 
 }
 
 
 // Initialize params for a crop
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches,
-                            int ncells,int crop_flag){
+struct CropContext CropInit(int cellw,int cellh,const struct CropParams params){
 
     assert(cellw==cellh);
-    int halfcropsz = (ncells*cellw)/2;
-    struct CropContext crp={0};
-    crp.ncells=ncells;
-    crp.halfcropsz=halfcropsz;
-    crp.ips=ips;
-    crp.npatches=npatches;
-    crp.crop_flag=crop_flag;
-    //crp.img_width=width;
-    //crp.img_height=height;
-    workspace *ws=new workspace(&crp);
-    crp.workspace=ws;
-    crp.out=ws->out;
+    int halfcropsz = (params.ncells*cellw)/2;
+    struct CropContext crp = {0};
+    crp.halfcropsz = halfcropsz;
+    crp.crp_params = params; 
+    workspace *ws = new workspace(&crp);
+    crp.workspace = ws;
+    crp.out = ws->out;
     return crp;
 }
 
@@ -206,7 +182,7 @@ size_t CropOutputByteCount(const struct CropContext *self){
     if(!self->workspace) return 0;
     
     int cropsz = self->halfcropsz*2;
-    return(((workspace*)self->workspace)->result_bytes(self->npatches*cropsz*cropsz));
+    return(((workspace*)self->workspace)->result_bytes(self->crp_params.npatches*cropsz*cropsz));
 
 }
 

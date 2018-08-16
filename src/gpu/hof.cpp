@@ -29,18 +29,18 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params,struct interest_pnts *ips,int npatches,int ncells,int crop_flag) 
+        workspace(logger_t logger,const struct HOFParameters& params,const struct CropParams& crp_params) //struct interest_pnts *ips,int npatches,int ncells,int crop_flag) 
         : logger(logger)
         {
 
-            crpx=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells,crop_flag);
-            crpy=CropInit(params.cell.w,params.cell.h,ips,npatches,ncells,crop_flag);
+            crpx=CropInit(params.cell.w,params.cell.h,crp_params);
+            crpy=CropInit(params.cell.w,params.cell.h,crp_params);
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
-            ghparams.image.w= (crop_flag) ? params.cell.w*ncells*npatches : params.input.w;
-            ghparams.image.h= (crop_flag) ? params.cell.w*ncells : params.input.h;
-            ghparams.image.pitch= (crop_flag) ? params.cell.w*ncells*npatches : params.input.pitch;
+            ghparams.image.w= (crp_params.crop_flag) ? params.cell.w*crp_params.ncells*crp_params.npatches : params.input.w;
+            ghparams.image.h= (crp_params.crop_flag) ? params.cell.w*crp_params.ncells : params.input.h;
+            ghparams.image.pitch= (crp_params.crop_flag) ? params.cell.w*crp_params.ncells*crp_params.npatches : params.input.pitch;
             ghparams.nbins=params.nbins;
             ghparams.hog_bin=0;
 
@@ -92,7 +92,7 @@ namespace gpu {
             LucasKanade(&lk_,input,(LucasKanadeScalarType)type);
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
-            if(crpx.crop_flag){
+            if(crpx.crp_params.crop_flag){
               CropImage(&crpx,dx,lk_.w,lk_.h);
               CropImage(&crpy,dy,lk_.w,lk_.h);
               GradientHistogram(&gh,crpx.out,crpy.out);
@@ -115,12 +115,12 @@ using namespace priv::hof::gpu;
 
 struct HOFContext HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
-    const struct HOFParameters params,struct interest_pnts *ips,int npatches,int ncells,int crop_flag)
+    const struct HOFParameters params, const struct CropParams crp_params)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,ips,npatches,ncells,crop_flag,nullptr};
+    struct HOFContext self={logger,params,crp_params,nullptr};
     try {
-        ws=new workspace(logger,params,ips,npatches,ncells,crop_flag);
+        ws=new workspace(logger,params,crp_params);
         self.workspace=ws;
     } catch(const std::exception &e) {
         delete ws;

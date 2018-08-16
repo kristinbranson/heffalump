@@ -11,31 +11,29 @@
 #define CROP_H 
 
 
-struct interest_pnts{
 
-    int side[3][2];
-    int front[2][2];
+struct CropParams{
+
+   int* interest_pnts;// points around which to crop
+   int ncells; // number of cell patches to crop
+   int npatches; // number of crops for a given video
+   int crop_flag; // enable or diable cropping
 
 };
 
 struct CropContext{
 
     void *workspace;
-    int ncells;
+    struct CropParams crp_params;
     int halfcropsz;
-    struct interest_pnts *ips;
-    int npatches;
-    int crop_flag;
     float *out;
 };
-// some of the above parameters could be written as a crop parameter struct
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct CropContext CropInit(int cellw,int cellh,struct interest_pnts *ips,int npatches,
-                            int ncells,int crop_flag);
+struct CropContext CropInit(int cellw, int cellh, const struct CropParams params);
 
 void CropImage(const struct CropContext *self,const float *in, int width, int height);
 

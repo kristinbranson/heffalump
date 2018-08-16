@@ -20,7 +20,6 @@
 #define CHECK(L,e) do{if(!(e)){ERR(L,"Expression evaluated as false\n\t%s\n",#e);goto Error;}}while(0)
 
 
-
 struct workspace {
     struct SeparableConvolutionContext dx,dy;
     struct CropContext crpx,crpy;
@@ -55,18 +54,15 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     ws->dx=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nkx); // FIXME: need the real input pitch here
     ws->dy=SeparableConvolutionInitialize(self->logger,w,h,w,ks,nky); // FIXME: need the real input pitch here
     
-     
-    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,
-                          self->ncells,self->crop_flag);
-    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->ips,self->npatches,
-                          self->ncells,self->crop_flag);    
+    ws->crpx=CropInit(self->params.cell.w,self->params.cell.h,self->crp_params);
+    ws->crpy=CropInit(self->params.cell.w,self->params.cell.h,self->crp_params);
  
     struct gradientHistogramParameters params={
         .cell={ .w=self->params.cell.w,
                 .h=self->params.cell.h},
-        .image={ .w= (self->crop_flag) ? ((self->params.cell.w)*(ws->crpx.ncells)*self->npatches) : w, 
-                 .h= (self->crop_flag) ? (self->params.cell.h*ws->crpx.ncells) : h, 
-                 .pitch=(self->crop_flag) ? ((self->params.cell.w)*(ws->crpx.ncells)*self->npatches) : w}, // FIXME: need the real input pitch here
+        .image={ .w= (self->crp_params.crop_flag) ? ((self->params.cell.w)*(self->crp_params.ncells)*self->crp_params.npatches) : w, 
+                 .h= (self->crp_params.crop_flag) ? (self->params.cell.h*self->crp_params.ncells) : h, 
+                 .pitch=(self->crp_params.crop_flag) ? ((self->params.cell.w)*(self->crp_params.ncells)*self->crp_params.npatches) : w}, // FIXME: need the real input pitch here
         .nbins=self->params.nbins,
         .hog_bin =1
     };
@@ -79,16 +75,13 @@ Error:
 struct HOGContext HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
-    int w,int h,struct interest_pnts *ips,int npatches,int ncells,int crop_flag)
+    int w, int h, const struct CropParams crp_params)//struct interest_pnts *ips,int npatches,int ncells,int crop_flag)
 {
     struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
-        .ips=ips,
-        .npatches=npatches,
-        .ncells=ncells,
-        .crop_flag=crop_flag,
+        .crp_params=crp_params,
         .workspace=workspace_init(&self)
 
     };
@@ -116,7 +109,7 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
  
-    if(self->crop_flag){
+    if(self->crp_params.crop_flag){
         CropImage(&ws->crpx,ws->dx.out,self->w,self->h);
         CropImage(&ws->crpy,ws->dy.out,self->w,self->h);
         GradientHistogram(&ws->gh,ws->crpx.out,ws->crpy.out);

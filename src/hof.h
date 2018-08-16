@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "lk.h"
+#include "crop.h"
 
 #ifndef H_NGC_HOF
 #define H_NGC_HOF
@@ -41,16 +42,17 @@ struct HOFParameters {
 struct HOFContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);    
     struct HOFParameters params;
-    struct interest_pnts *ips;
-    int npatches;
-    int ncells;
-    int crop_flag;
+    struct CropParams crp_params;
+    //struct interest_pnts *ips;
+    //int npatches;
+    //int ncells;
+    //int crop_flag;
     void *workspace;
 };
 
 struct HOFContext HOFInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
-    const struct HOFParameters params, struct interest_pnts *ips,int npatches,int ncells,int crop_flag);
+    const struct HOFParameters params, const struct CropParams crp_params); //struct interest_pnts *ips,int npatches,int ncells,int crop_flag);
 
 void HOFTeardown(struct HOFContext *context);
 
