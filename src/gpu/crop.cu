@@ -70,8 +70,7 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz,i
         int height = h;
         int xlim, ylim;
 
-        // set the end limits for the crop
-      
+        // set the end limits for the crop 
         if(x_end < w){  
         
             xlim = x_end;  
@@ -119,6 +118,7 @@ __global__ void crop(float *out,const float *in,int loc_x,int loc_y,int halfsz,i
 
            out[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;                               
       }
+
 
 }
 

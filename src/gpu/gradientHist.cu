@@ -82,6 +82,13 @@ namespace gpu {
         __device__ bool in_bounds(const int &x, const int &y,const int& w, const int& h) { return x>=0&&y>=0&&x<w&&y<h; }        
         __device__ float fpartf(const float f) { return f-floorf(f); }
         
+        __inline__ __device__ float warpReduceSum(float val) {
+  
+            for (int offset = 16/2; offset > 0; offset /= 2) 
+                val += __shfl_down(val, offset);
+            return val;
+        }
+        
         __global__ void oriented_magnitudes_k(
             float * __restrict__ mag,
             float * __restrict__ theta_bin,
@@ -193,7 +200,7 @@ namespace gpu {
                     // indices for the current cell (rx,ry) is hitting
                     celli=rx_id/cellw; 
                     cellj=ry_id/cellh;
-                
+
                     // fractional coordinate relative to cell center
                     // should be less than one
                     dx=(rx_id-celli*cellw+0.5f)/float(cellw)-0.5f;
@@ -212,7 +219,7 @@ namespace gpu {
                     th=theta_bins[rx_id+ry_id*w];
                     m=mag[rx_id+ry_id*w];
                     mth=fpartf(theta_bins[rx_id+ry_id*w]);
-#endif
+#endif              
                 
                     inx=(0<=(neighborx+celli)&&(neighborx+celli)<ncellw);                
                     iny=(0<=(stepy+cellj)&&(stepy+cellj)<ncellh);
@@ -236,31 +243,147 @@ namespace gpu {
                     *b=c00+c01+c10+c11;
 #else
 
+
                     {
                       float * b=out+binpitch*th+cellidx;
                       atomicAdd(b,(1-mth)*c00);
                       if(inx&iny) atomicAdd(b+neighbory+neighborx,(1-mth)*c11);
-                      if(iny) atomicAdd(b+neighborx,(1-mth)*c01);
-                      if(inx) atomicAdd(b+neighbory,(1-mth)*c10);
+                      if(inx) atomicAdd(b+neighborx,(1-mth)*c01);
+                      if(iny) atomicAdd(b+neighbory,(1-mth)*c10);
                     }
     
                     {
                       thn=((th+1)>=nbins)?0:(th+1);
-                      float * b=out+binpitch*thn+cellidx;
+                      float * b=out+binpitch*thn+cellidx;                     
                       atomicAdd(b,(mth)*c00);
-                      if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
-                      if(iny) atomicAdd(b+neighborx,(mth)*c01);
-                      if(inx) atomicAdd(b+neighbory,(mth)*c10);
-                    }
 
+                      if(inx&iny) atomicAdd(b+neighbory+neighborx,(mth)*c11);
+                      if(inx) atomicAdd(b+neighborx,(mth)*c01);
+                      if(iny) atomicAdd(b+neighbory,(mth)*c10);
+                    }
 #endif
                 }
-              }
-             
+              }             
             }
  
         }
 
+ 
+        __global__ void gradhist_shared(
+            float * __restrict__ out,
+            const float * __restrict__ mag,
+            const float * __restrict__ theta_bins,
+            int w,int h,int nbins,
+            int cellw, int cellh)
+        {
+
+            // assign shared memory for block of weigths of 4 influenced cells 
+            // and corresponding bins they belong to
+
+            extern __shared__ float hist[];
+                
+            hist[threadIdx.x + threadIdx.y * blockDim.x] = 0;
+            hist[threadIdx.x + (8) * blockDim.x] = 0;
+
+            __syncthreads();
+
+            // current input sample position
+            const int ry = (threadIdx.y) + blockIdx.y * blockDim.y;
+            const int rx = (threadIdx.x) + blockIdx.x * blockDim.x;
+
+            const int ncellh = FLOOR(h,cellh);
+            const int ncellw = FLOOR(w,cellw);
+            const int binpitch = ncellw*ncellh;
+
+            int celli,cellj,neighborx,stepy,cellidx,th,thn,step,jmp;
+            float dx,dy,mx,my,c00,c01,c10,c11,m,mth;
+            bool inx,iny;
+            
+            //variables for shared memory
+            const int stride = 4;
+            const int sz_nw = 3;
+
+            if(in_bounds(rx,ry,w,h)) {
+            
+#if 0
+            //Useful for checking normalization
+              const int th=0.0f;
+              const float m=1.0f;
+#else
+                th = theta_bins[rx + ry * w];
+                m = mag[rx + ry * w];
+                mth = fpartf(theta_bins[rx + ry * w]);
+#endif
+ 
+                // compute weights for 4 influenced cells (tl,tr,bl,br)
+                // indices for the current cell (rx,ry) is hitting
+                celli = rx / cellw;
+                cellj = ry / cellh;
+
+                // fractional coordinate relative to cell center
+                // should be less than one
+                dx = (rx - celli * cellw + 0.5f) / float(cellw) - 0.5f;
+                dy = (ry - cellj * cellh + 0.5f) / float(cellh) - 0.5f;
+
+                neighborx = dx < 0.0f ? -1 : 1;
+                stepy = dy < 0.0f ? -1 : 1;
+                cellidx = celli + cellj * ncellw;
+
+                inx = (0 <= (neighborx + celli) && (neighborx + celli) < ncellw);
+                iny = (0 <= (stepy + cellj) && (stepy + cellj) < ncellh);
+
+                mx = fabsf(dx);
+                my = fabsf(dy);
+                c00 = m * (1.0f - mx) * (1.0f - my) * cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
+                c01 = m * (1.0f - mx) *      my * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                c10 = m *      mx * (1.0f - my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
+		c11 = m *      mx *      my * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                
+                // store the 8-neighborhood cell hist for a block in shared memory                    
+                thn=((th+1) >= nbins ) ? 0 : (th+1);
+                step = stride * nbins + th;
+                atomicAdd(hist + step , (1 - mth) * c00);   
+                step = (sz_nw * stepy + stride) * nbins + th;
+                if (iny) atomicAdd(hist + step ,(1 - mth) * c10);
+                step = (neighborx + stride) * nbins + th;
+                if (inx) atomicAdd(hist + step ,(1 - mth) * c01);
+                step = (neighborx + sz_nw * stepy + stride) * nbins + th;
+                if (inx && iny) atomicAdd(hist + step ,(1 - mth) * c11);
+
+                step =  stride * nbins + thn;
+                atomicAdd(hist + step ,(mth) * c00);
+                step = (sz_nw * stepy + stride) * nbins + thn;
+                if (iny) atomicAdd(hist + step , (mth) * c10);
+                step = (neighborx + stride) * nbins + thn;
+                if (inx) atomicAdd(hist + step ,(mth) * c01);
+                step = (neighborx + sz_nw * stepy + stride) * nbins + thn;
+                if (inx && iny) atomicAdd(hist + step ,(mth) * c11);
+                     
+                         
+                __syncthreads(); 
+            
+	        if(threadIdx.x < 8 && threadIdx.y == 0){
+               
+	            float * b = out + binpitch * threadIdx.x + cellidx;
+	            for(int step_j = -1 ;step_j < sz_nw-1 ;step_j++){
+
+		        for(int step_i = -1 ;step_i < sz_nw-1 ;step_i++){
+
+                            inx = (0 <= (step_i + celli) && (step_i + celli) < ncellw);
+                            iny = (0 <= (step_j + cellj) && (step_j + cellj) < ncellh);
+
+                            if (inx && iny){ 
+                                 
+			        jmp = step_i + step_j * ncellw;     
+			        atomicAdd(b + jmp ,hist[ (step_i + step_j * sz_nw + stride) * nbins + threadIdx.x] );
+
+		            }
+		        }
+	            }                    
+                }     
+            }          
+                  
+        }
 
         struct workspace {
             workspace(const struct gradientHistogramParameters* params,priv::gradient_histogram::gpu::logger_t logger)
@@ -310,13 +433,25 @@ namespace gpu {
                         zeros_k<<<unsigned(CEIL(n,size_t(1024*16))),1024,0,stream>>>((float4*)out,n/size_t(16));
                     }
                     {
-                        dim3 block(8,8); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
+                        /*dim3 block(8,8); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
                         dim3 grid(
                             CEIL(params.image.w,64),
                             CEIL(params.image.h,32));
                         gradhist_k<<<grid,block,0,stream>>>(out,mag,theta,
                                                             params.image.w,params.image.h,
+                                                            params.nbins,params.cell.w,params.cell.h);*/
+
+                        dim3 block(8,8); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
+                        dim3 grid(
+                            CEIL(params.image.w ,block.x),
+                            CEIL(params.image.h ,block.y));
+                        int sz_nw = 3; // size of 8-neighborhood
+                        size_t shared_mem = (params.nbins*sz_nw*sz_nw)*sizeof(float);
+                        gradhist_shared<<<grid,block,shared_mem,stream>>>(out,mag,theta,
+                                                            params.image.w,params.image.h,
                                                             params.nbins,params.cell.w,params.cell.h);
+                                                                     
+
                     }
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
@@ -500,7 +635,6 @@ extern "C" {
         if(!self||!self->workspace) return;
         WORKSPACE->copy_last_orientation(buf,nbytes);
     }
-
 
 
     /// shape and strides are returned in units of float elements.
