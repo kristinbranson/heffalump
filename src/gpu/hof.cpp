@@ -29,12 +29,11 @@ namespace gpu {
 
 
     struct workspace {
-        workspace(logger_t logger,const struct HOFParameters& params,const struct CropParams& crp_params) //struct interest_pnts *ips,int npatches,int ncells,int crop_flag) 
+        workspace(logger_t logger,const struct HOFParameters& params,const struct CropParams& crp_params)  
         : logger(logger)
         {
 
-            crpx=CropInit(params.cell.w,params.cell.h,crp_params);
-            crpy=CropInit(params.cell.w,params.cell.h,crp_params);
+            crp = CropInit(params.cell.w,params.cell.h,crp_params);
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
@@ -52,8 +51,7 @@ namespace gpu {
 
         ~workspace() {
             GradientHistogramDestroy(&gh);
-            CropTearDown(&crpy);
-            CropTearDown(&crpx);
+            CropTearDown(&crp);
             LucasKanadeTeardown(&lk_);
         }
 
@@ -92,12 +90,16 @@ namespace gpu {
             LucasKanade(&lk_,input,(LucasKanadeScalarType)type);
             const float *dx=lk_.result;
             const float *dy=lk_.result+lk_.w*lk_.h;
-            if(crpx.crp_params.crop_flag){
-              CropImage(&crpx,dx,lk_.w,lk_.h);
-              CropImage(&crpy,dy,lk_.w,lk_.h);
-              GradientHistogram(&gh,crpx.out,crpy.out);
+
+            if(crp.crp_params.crop_flag){
+
+              CropImage(&crp ,dx ,dy ,lk_.w ,lk_.h);
+              GradientHistogram(&gh ,crp.out_x ,crp.out_y);
+
             }else{
+
               GradientHistogram(&gh,dx,dy);
+
             }
         }
 
@@ -105,8 +107,7 @@ namespace gpu {
         logger_t logger;
         struct gradientHistogram gh;
         struct LucasKanadeContext lk_;
-        struct CropContext crpx;
-        struct CropContext crpy;
+        struct CropContext crp;
     };
 
 }}} // priv::hof::gpu

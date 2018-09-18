@@ -10,8 +10,6 @@
 #ifndef CROP_H
 #define CROP_H 
 
-
-
 struct CropParams{
 
    int* interest_pnts;// points around which to crop
@@ -26,7 +24,8 @@ struct CropContext{
     void *workspace;
     struct CropParams crp_params;
     int halfcropsz;
-    float *out;
+    float *out_x;
+    float *out_y;
 };
 
 #ifdef __cplusplus
@@ -35,7 +34,8 @@ extern "C" {
 
 struct CropContext CropInit(int cellw, int cellh, const struct CropParams params);
 
-void CropImage(const struct CropContext *self,const float *in, int width, int height);
+void CropImage(const struct CropContext *self ,const float *in_x ,
+               const float *in_y ,int width , int height);
 
 void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz);
  

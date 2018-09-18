@@ -82,12 +82,6 @@ namespace gpu {
         __device__ bool in_bounds(const int &x, const int &y,const int& w, const int& h) { return x>=0&&y>=0&&x<w&&y<h; }        
         __device__ float fpartf(const float f) { return f-floorf(f); }
         
-        __inline__ __device__ float warpReduceSum(float val) {
-  
-            for (int offset = 16/2; offset > 0; offset /= 2) 
-                val += __shfl_down(val, offset);
-            return val;
-        }
         
         __global__ void oriented_magnitudes_k(
             float * __restrict__ mag,
@@ -268,7 +262,6 @@ namespace gpu {
  
         }
 
- 
         __global__ void gradhist_shared(
             float * __restrict__ out,
             const float * __restrict__ mag,
@@ -282,8 +275,9 @@ namespace gpu {
 
             extern __shared__ float hist[];
                 
-            hist[threadIdx.x + threadIdx.y * blockDim.x] = 0;
-            hist[threadIdx.x + (8) * blockDim.x] = 0;
+            hist[threadIdx.x + threadIdx.y * (blockDim.x+1)] = 0;
+            if(threadIdx.x==0) 
+                hist[threadIdx.x + blockDim.x + threadIdx.y * (blockDim.x+1)] = 0;
 
             __syncthreads();
 
@@ -302,6 +296,7 @@ namespace gpu {
             //variables for shared memory
             const int stride = 4;
             const int sz_nw = 3;
+            const int neighbor_elems = sz_nw*sz_nw;
 
             if(in_bounds(rx,ry,w,h)) {
             
@@ -335,49 +330,54 @@ namespace gpu {
                 mx = fabsf(dx);
                 my = fabsf(dy);
                 c00 = m * (1.0f - mx) * (1.0f - my) * cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
-                c01 = m * (1.0f - mx) *      my * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
-                c10 = m *      mx * (1.0f - my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
-		c11 = m *      mx *      my * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
-                
+                c01 = m * (1.0f - mx) *      my     * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                c10 = m *      mx     * (1.0f - my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
+		c11 = m *      mx     *      my     * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+              
                 // store the 8-neighborhood cell hist for a block in shared memory                    
                 thn=((th+1) >= nbins ) ? 0 : (th+1);
-                step = stride * nbins + th;
+
+                step = stride + (neighbor_elems) * th;
                 atomicAdd(hist + step , (1 - mth) * c00);   
-                step = (sz_nw * stepy + stride) * nbins + th;
+                step = (sz_nw * stepy + stride) + (neighbor_elems) * th;
                 if (iny) atomicAdd(hist + step ,(1 - mth) * c10);
-                step = (neighborx + stride) * nbins + th;
+                step = (neighborx + stride) + (neighbor_elems) * th;
                 if (inx) atomicAdd(hist + step ,(1 - mth) * c01);
-                step = (neighborx + sz_nw * stepy + stride) * nbins + th;
+                step = (neighborx + sz_nw * stepy + stride) +  (neighbor_elems) * th;
                 if (inx && iny) atomicAdd(hist + step ,(1 - mth) * c11);
 
-                step =  stride * nbins + thn;
+                step =  stride + (neighbor_elems) * thn;
                 atomicAdd(hist + step ,(mth) * c00);
-                step = (sz_nw * stepy + stride) * nbins + thn;
+                step = (sz_nw * stepy + stride) + (neighbor_elems) * thn;
                 if (iny) atomicAdd(hist + step , (mth) * c10);
-                step = (neighborx + stride) * nbins + thn;
+                step = (neighborx + stride) + (neighbor_elems) * thn;
                 if (inx) atomicAdd(hist + step ,(mth) * c01);
-                step = (neighborx + sz_nw * stepy + stride) * nbins + thn;
+                step = (neighborx + sz_nw * stepy + stride) + (neighbor_elems) * thn;
                 if (inx && iny) atomicAdd(hist + step ,(mth) * c11);
-                     
                          
                 __syncthreads(); 
             
+                // write the hist from shared to global memory
 	        if(threadIdx.x < 8 && threadIdx.y == 0){
                
 	            float * b = out + binpitch * threadIdx.x + cellidx;
+                    float tmp = 0;
 	            for(int step_j = -1 ;step_j < sz_nw-1 ;step_j++){
 
 		        for(int step_i = -1 ;step_i < sz_nw-1 ;step_i++){
 
-                            inx = (0 <= (step_i + celli) && (step_i + celli) < ncellw);
-                            iny = (0 <= (step_j + cellj) && (step_j + cellj) < ncellh);
+                            tmp = hist[ (step_i + step_j * sz_nw + stride) + (neighbor_elems) * threadIdx.x];
+                            if(tmp != 0){
 
-                            if (inx && iny){ 
-                                 
-			        jmp = step_i + step_j * ncellw;     
-			        atomicAdd(b + jmp ,hist[ (step_i + step_j * sz_nw + stride) * nbins + threadIdx.x] );
+                                inx = (0 <= (step_i + celli) && (step_i + celli) < ncellw);
+                                iny = (0 <= (step_j + cellj) && (step_j + cellj) < ncellh);
 
-		            }
+                                if (inx && iny){ 
+                                 			       
+                                    jmp = step_i + step_j * ncellw;     
+			            atomicAdd(b + jmp ,tmp);
+                                }  
+		            } 
 		        }
 	            }                    
                 }     
@@ -441,15 +441,17 @@ namespace gpu {
                                                             params.image.w,params.image.h,
                                                             params.nbins,params.cell.w,params.cell.h);*/
 
-                        dim3 block(8,8); // Note: < this is flexible, adjust for occupancy (probably depends on register pressure)
+                        dim3 block(8,8); // this is the best performing block size for the given application.
+                                         // parameters in the kernel depend on this size.Do not change arbitarily.
                         dim3 grid(
                             CEIL(params.image.w ,block.x),
                             CEIL(params.image.h ,block.y));
                         int sz_nw = 3; // size of 8-neighborhood
-                        size_t shared_mem = (params.nbins*sz_nw*sz_nw)*sizeof(float);
+                        size_t shared_mem = (block.x*block.y*sz_nw*sz_nw)*sizeof(float);
                         gradhist_shared<<<grid,block,shared_mem,stream>>>(out,mag,theta,
                                                             params.image.w,params.image.h,
                                                             params.nbins,params.cell.w,params.cell.h);
+                      
                                                                      
 
                     }
