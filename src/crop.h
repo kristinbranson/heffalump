@@ -41,6 +41,8 @@ void CropOutputCopy(const struct CropContext *self,void *buf,size_t sz);
  
 size_t CropOutputByteCount(const struct CropContext *self);
 
+void CropOutputShape(const struct CropContext *self, unsigned *shape);
+
 void CropTearDown(const struct CropContext *self);
 
 #ifdef __cplusplus

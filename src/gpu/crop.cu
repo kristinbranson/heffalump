@@ -10,6 +10,7 @@
 #include<cuda_runtime_api.h>
 #include<stdio.h>
 #include<assert.h>
+#include<iostream>
 
 #define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 #define CEIL(num,den) ((num+den-1)/den)
@@ -24,7 +25,7 @@ inline void gpuAssert(cudaError_t code, const char *file,
 
 __global__ void crop(float *out_x ,float* out_y ,const float *in_x ,const float* in_y ,
                      int loc_x ,int loc_y ,int halfsz ,int npatches ,int w , int h , 
-                     int view_flag ,int counter){
+                     int counter){
 
     const int idx = threadIdx.x + blockIdx.x*blockDim.x;
     const int idy = threadIdx.y + blockIdx.y*blockDim.y;
@@ -36,9 +37,8 @@ __global__ void crop(float *out_x ,float* out_y ,const float *in_x ,const float*
     const int locx_id = x_start + idx;
     const int locy_id = y_start + idy;
     const int cropsz = 2*halfsz;
-    int height = h;
-    int xlim, ylim;
-
+    int xlim, ylim, xbeg, ybeg;
+ 
     // set the end limits for the crop 
     if(x_end < w){  
         
@@ -46,52 +46,48 @@ __global__ void crop(float *out_x ,float* out_y ,const float *in_x ,const float*
       
     }else{
 
-        xlim = w;
+        xlim = w-1;
 
     }
         
-    if(y_end < height){
+    if(y_end < h){
 
         ylim = y_end;
 
     }else{
 
-        ylim = height;
+        ylim = h-1;
 
     }
-        
-    // crop patch
-    if(x_start > 0 && y_start > 0){
 
-        if(locx_id < xlim && locy_id < ylim){
+    if(x_start >= 0){
 
-            out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_x[locx_id + locy_id*w];
-            out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_y[locx_id + locy_id*w];
-
-        }else{
-               
-            out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;    
-            out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;
-        }
+        xbeg = x_start;
   
-    }else if(locx_id >= 0 && locy_id >=0){
+    } else {
 
-        if(locx_id < xlim && locy_id < ylim){
+        xbeg = 0;
 
-            out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_x[locx_id + locy_id*w];
-            out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_y[locx_id + locy_id*w];
-
-        }else{
-                   
-            out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;
-            out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;
-        }
-           
-    }else{
-
-        out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;   
-        out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = 0;                            
     }
+
+    if(y_start >= 0){
+
+        ybeg = y_start;
+
+    } else {
+
+        ybeg = 0;
+
+    }
+    
+    // crop patch
+    if(locx_id >= xbeg && locy_id >= ybeg && locx_id < xlim && locy_id < ylim){
+   
+        out_x[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_x[locx_id + locy_id*w];
+        out_y[(counter*cropsz) + idx + (idy*cropsz*npatches)] = in_y[locx_id + locy_id*w];
+
+    }
+
 }
 
 struct workspace{  
@@ -100,6 +96,8 @@ struct workspace{
      
         gpuErrChk(cudaMalloc(&out_x ,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
         gpuErrChk(cudaMalloc(&out_y ,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
+        gpuErrChk(cudaMemset(out_x,0,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
+        gpuErrChk(cudaMemset(out_y,0,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
              
     }
 
@@ -115,18 +113,23 @@ struct workspace{
         return((cropsz*cropsz*npatches)*sizeof(float));  
     }
 
-    size_t result_bytes(int size){
-        return(size*sizeof(float));
-
-    }
-
+  
+    // the size to be passed to this function is twice the total crop size of image
     void copy_result(const struct CropContext *crp ,void* buf ,size_t size){
         
         int cropsz = 2*crp->halfcropsz;
         float* hout_x = (float*)buf;
-        float* hout_y = (float*)(buf + cropsz*cropsz);
-        gpuErrChk(cudaMemcpyAsync(hout_x ,out_x ,size ,cudaMemcpyDeviceToHost));
-        gpuErrChk(cudaMemcpyAsync(hout_y ,out_y , size ,cudaMemcpyDeviceToHost))
+        float* hout_y = (float*)buf + cropsz*cropsz*crp->crp_params.npatches;
+        gpuErrChk(cudaMemcpy(hout_x ,out_x ,size/2 ,cudaMemcpyDeviceToHost));
+        gpuErrChk(cudaMemcpy(hout_y ,out_y , size/2 ,cudaMemcpyDeviceToHost))
+
+    }
+
+    void output_shape(const struct CropContext *crp ,unsigned *shape){
+    
+        int cropsz = 2*crp->halfcropsz;
+        shape[0] = cropsz;
+        shape[1] = crp->crp_params.npatches*cropsz;
 
     }
 
@@ -143,18 +146,16 @@ void cropPatch(const struct CropContext *self ,const float *in_x ,
     int cropsz =2*self->halfcropsz;
     float* out_x = self->out_x;
     float* out_y = self->out_y;
-    int side;
-   
+        
     dim3 block(32,8);
     dim3 grid(CEIL(cropsz,block.x),CEIL(cropsz,block.y));
    
     // crop for number of side views
-    side=1;    
     for(int i = 0;i < self->crp_params.npatches;i++){
 
-        crop<<<grid,block>>>(out_x ,out_y ,in_x ,in_y ,self->crp_params.interest_pnts[2*i], 
-                             self->crp_params.interest_pnts[2*i+1] ,
-                             self->halfcropsz,self->crp_params.npatches,w,h,side,i);
+        crop<<<grid,block>>>(out_x ,out_y ,in_x ,in_y ,self->crp_params.interest_pnts[2*i]-1, 
+                             self->crp_params.interest_pnts[2*i+1]-1 ,
+                             self->halfcropsz,self->crp_params.npatches,w,h,i);
         cudaGetLastError();
     }
    
@@ -199,18 +200,23 @@ void CropOutputCopy(const struct CropContext *self ,void *buf ,size_t sz){
 size_t CropOutputByteCount(const struct CropContext *self){
 
     if(!self->workspace) return 0;
-    
-    int cropsz = self->halfcropsz*2;
-    return(((workspace*)self->workspace)->result_bytes(self->crp_params.npatches*cropsz*cropsz));
+    size_t nbytes = ((workspace*)self->workspace)->nbytes_cropsz(self->halfcropsz, self->crp_params.npatches)*2;
+    return nbytes;
 
 }
 
+void CropOutputShape(const struct CropContext *self,unsigned *shape) {
+
+    if(!self->workspace) return;
+    workspace *ws = (workspace*)self->workspace;
+    ws->output_shape(self ,shape); 
+
+}
 
 // delete the crop context
 void CropTearDown(const struct CropContext *self){
 
-   if(!self->workspace) return;
-   workspace *ws = (workspace*)self->workspace;
-   delete ws;
-
+    if(!self->workspace) return;
+    workspace *ws = (workspace*)self->workspace;
+    delete ws;
 }

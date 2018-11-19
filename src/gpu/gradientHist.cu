@@ -156,6 +156,7 @@ namespace gpu {
         /// `1/2 * 1/2 * 1/2`. So the inbounds area is `1-1/8 = 7/8`.
         ///
         __device__ float cellnorm(int x,int y,int w, int h, int cw,int ch) {
+
             return ((x==0||x==(w-1))?(8.0f/7.0f):1.0f)*
                    ((y==0||y==(h-1))?(8.0f/7.0f):1.0f)/
                    float(cw*ch);
@@ -329,22 +330,22 @@ namespace gpu {
 
                 mx = fabsf(dx);
                 my = fabsf(dy);
-                c00 = m * (1.0f - mx) * (1.0f - my) * cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
-                c01 = m * (1.0f - mx) *      my     * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
-                c10 = m *      mx     * (1.0f - my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
-		c11 = m *      mx     *      my     * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
+                c00 = m * (1.0f-mx)  * (1.0f-my) * cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
+                c01 = m * (1.0f-mx)       * (my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
+                c10 = m * (mx)  * (1.0f-my)      * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
+		c11 = m * (mx)       * (my)      * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
               
                 // store the 8-neighborhood cell hist for a block in shared memory                    
                 thn=((th+1) >= nbins ) ? 0 : (th+1);
 
                 step = stride + (neighbor_elems) * th;
-                atomicAdd(hist + step , (1 - mth) * c00);   
+                atomicAdd(hist + step , (1-mth) * c00);   
                 step = (sz_nw * stepy + stride) + (neighbor_elems) * th;
-                if (iny) atomicAdd(hist + step ,(1 - mth) * c10);
+                if (iny) atomicAdd(hist + step ,(1-mth) * c10);
                 step = (neighborx + stride) + (neighbor_elems) * th;
-                if (inx) atomicAdd(hist + step ,(1 - mth) * c01);
+                if (inx) atomicAdd(hist + step ,(1-mth) * c01);
                 step = (neighborx + sz_nw * stepy + stride) +  (neighbor_elems) * th;
-                if (inx && iny) atomicAdd(hist + step ,(1 - mth) * c11);
+                if (inx && iny) atomicAdd(hist + step ,(1-mth) * c11);
 
                 step =  stride + (neighbor_elems) * thn;
                 atomicAdd(hist + step ,(mth) * c00);
@@ -354,6 +355,7 @@ namespace gpu {
                 if (inx) atomicAdd(hist + step ,(mth) * c01);
                 step = (neighborx + sz_nw * stepy + stride) + (neighbor_elems) * thn;
                 if (inx && iny) atomicAdd(hist + step ,(mth) * c11);
+
                          
                 __syncthreads(); 
             
@@ -450,9 +452,7 @@ namespace gpu {
                         size_t shared_mem = (block.x*block.y*sz_nw*sz_nw)*sizeof(float);
                         gradhist_shared<<<grid,block,shared_mem,stream>>>(out,mag,theta,
                                                             params.image.w,params.image.h,
-                                                            params.nbins,params.cell.w,params.cell.h);
-                      
-                                                                     
+                                                            params.nbins,params.cell.w,params.cell.h);                                                                     
 
                     }
                 } catch(const GradientHistogramError &e) {
