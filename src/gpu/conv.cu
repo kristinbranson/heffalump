@@ -349,9 +349,16 @@ namespace gpu {
         #undef PAYLOAD
     }
 
+    /*************
+     Author-Rutuja
+     Unit stride convolution using shared memory.
+     Each thread reading and writing non-coalesced input values to shared memory.
+     Each thread computing convolution product for a single index location.  
+    *************/
 
     template<typename T> 
-    __global__ void conv_row_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+    __global__ void conv_row_k(float * __restrict__ out, const T * __restrict__ in, int w, int h, int p, 
+                               const float * __restrict__ k, int nk) {
 
         int KERNEL_RADIUS=((nk-1)/2);
         extern __shared__ float data[];
@@ -360,201 +367,80 @@ namespace gpu {
         const int idx = threadIdx.x + blockDim.x*blockIdx.x;
         const int idy = threadIdx.y + blockIdx.y*blockDim.y;
         const int gid = idx + idy*w;
-
-        int samples=0,thdu=0,thdr=0,start=0,end=0,clamp_start=0,offset_start=0,offset_end=0;
-        if(blockIdx.x == 0 && blockIdx.x !=gridDim.x-1){
-            samples = KERNEL_RADIUS + blockDim.x;   
-            thdu = samples/4;
-            thdr = samples%4;
-            start = blockDim.x*blockIdx.x;
-
-        }else if(blockIdx.x==gridDim.x-1 && blockIdx.x !=0){
-            
-            int rem = w%blockDim.x; 
-            if(rem==0)
-                samples = KERNEL_RADIUS + blockDim.x; 
-            else
-                samples = KERNEL_RADIUS + rem;
-            thdu = samples/4;
-            thdr = samples%4;
-            start = blockDim.x*blockIdx.x - KERNEL_RADIUS;
-
-            if(start<0){
-                start = (-1)*start;
-                for(int c=0;c < start;c++){
-
-                    data[c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = 0;//in[idy*w];
-
-                }
-                samples = samples - start;
-                thdu = samples/4;
-                thdr = samples%4;
-                offset_start = start;
-                clamp_start=1;
-                start=0;
-               
-            }
-                  
-        }else if(blockIdx.x==0 && gridDim.x-1 ==0){
-            if(blockDim.x > w)
-                samples = w;
-            else
-                samples = blockDim.x;
-            thdu = samples/4;
-            thdr = samples%4;
-            start = blockDim.x*blockIdx.x;
-            
-        }else{
-
-            samples = 2*KERNEL_RADIUS + blockDim.x;
-            thdu = samples/4;
-            thdr = samples%4;
-            start = blockDim.x*blockIdx.x - KERNEL_RADIUS;
-            end = blockDim.x*blockIdx.x + blockDim.x + KERNEL_RADIUS; 
-            if(start<0){
-                start = (-1)*start;
-                for(int c=0;c < start;c++){
-
-                    data[c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = 0;//in[idy*w];
-                }
-                samples = samples - start;
-                thdu = samples/4;
-                thdr = samples%4;
-                offset_start = start;
-                clamp_start=1;
-                start=0;
-            }
-            if(end > w){
-
-                end = end-w;
-                offset_end=samples-end;
-                for(int c=0;c < end;c++){
-
-                    data[offset_end + c + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = 0;//in[w-1 + idy*w];
-                }
-                samples = samples - end;
-                thdu = samples/4;
-                thdr = samples%4;            
-            }              
-
-        } 
-
-        if(idy < h){
-            
-            if(idx==0){
-
-                int count = 0;
-                for(int a = 0 ;a < KERNEL_RADIUS;a++){
-
-                    data[count + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = 0;//in[idy*w];     
-              
-                    count = count + 1;
-                }
-            }
-
-            if(idx == w-1){
-               
-                int cnt = threadIdx.x + KERNEL_RADIUS + 1;
-                
-                for(int b = 0 ;b < (KERNEL_RADIUS+blockDim.x-threadIdx.x-1) ;b++){
-
-                    data[cnt + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = 0;//in[w-1+(idy*w)];
-          
-                    cnt = cnt + 1;
-                }              
-             }
-
-             if(threadIdx.x < thdu){
+        const int sharedmem_width = KERNEL_RADIUS*2 + blockDim.x;
+        const int left_start = idx - KERNEL_RADIUS;//global start of right pad
+        const int right_start = idx + blockDim.x ; //global start of left pad
+                                               
+        int indr,indl; 
+        int cnt_left = KERNEL_RADIUS + blockDim.x;//local start index for left pad
         
-                 if(blockIdx.x==0 && blockIdx.x !=gridDim.x-1){
-           
-                     reinterpret_cast<float4*>(data + KERNEL_RADIUS + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-
-                 }else if(blockIdx.x == gridDim.x-1 && blockIdx.x !=0){
-            
-                     if(clamp_start){
-
-                         reinterpret_cast<float4*>(data + offset_start + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-
-                     }else{
-                      
-                         reinterpret_cast<float4*>(data + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-
-                     }
-                 
-                 }else if(blockIdx.x==0 && gridDim.x-1==0){
-
-                     reinterpret_cast<float4*>(data + KERNEL_RADIUS + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-                     
-                 }else{
-          
-                     if(clamp_start){
-
-                         reinterpret_cast<float4*>(data + offset_start + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-
-                     }else{
-
-                         reinterpret_cast<float4*>(data + threadIdx.x*4 + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2)))[0] = reinterpret_cast<const float4*>(in + start + threadIdx.x*4 + idy*w)[0];
-
-                     }
- 
-                 }  
-             }
- 
-             if(threadIdx.x < thdr+thdu && threadIdx.x >= thdu){
-            
-                  if(blockIdx.x==0 && blockIdx.x!=gridDim.x-1){
+        if(threadIdx.x < KERNEL_RADIUS){
         
-                      data[thdu*4 + threadIdx.x - thdu + KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+            indl = left_start + idy*w;
 
-                  }else if(blockIdx.x==gridDim.x-1 && blockIdx.x!=0){
+            if(left_start < 0){
 
-                       if(clamp_start){
-     
-                           data[thdu*4 + offset_start + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
+                data[threadIdx.x + threadIdx.y*sharedmem_width] = in[idy*w];
  
-                       }else{
+            } else {
 
-                           data[thdu*4 + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
-                       }
+                data[threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indl];
 
-                  }else if(blockIdx.x==0 && gridDim.x==0){
-
-                      data[thdu*4 + threadIdx.x - thdu + KERNEL_RADIUS + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
-
-                  }else{
-
-                      if(clamp_start){
-                         
-                          data[thdu*4 + offset_start + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
-
-                      }else{
-                     
-                          data[thdu*4 + threadIdx.x - thdu + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] = in[start + thdu*4 + threadIdx.x - thdu + idy*w];
-                      }
-                  }
-             }     
-
+            }
         }
-        __syncthreads();
 
+        if(threadIdx.x < KERNEL_RADIUS) {
+
+            indr = right_start + idy*w;
+
+            if(right_start > (w-1)) {
+
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[(w-1) + idy*w];
+                
+            } else {
+
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indr];
+                  
+            }
+               
+        }
+        
+        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in[gid];        
+           
+        __syncthreads();
+ 
          // convolution
+        float sum = 0;
+        float k_filt = 0;
+        int step = 0;
+       
         if(idx < w && idy < h){
-            float sum = 0;
+         
             const int x = KERNEL_RADIUS + threadIdx.x;
 
-            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
-                sum += data[x + i + threadIdx.y*(blockDim.x+(KERNEL_RADIUS*2))] * k[KERNEL_RADIUS + i];
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++){
+
+                k_filt = k[KERNEL_RADIUS + i];
+                step = x + i + threadIdx.y*sharedmem_width;
+                sum += data[step] * k_filt;
+
+            }
 
             out[gid] = sum; 
-        }
-
+        } 
+        
     }
 
-
+    /*************
+     Author-Rutuja
+     Non-unit stride convolution using shared memory.
+     Each thread reading and writing non-coalesced strided input values to shared memory.
+     Each thread computing non strided convolution product for a single index location.  
+    *************/
 
     template<typename T>
-    __global__ void conv_col_k(float * __restrict__ out,const T * __restrict__ in,int w,int h,int p,const float * __restrict__ k,int nk) {
+    __global__ void conv_col_k(float * __restrict__ out, const T * __restrict__ in, int w, int h, int p,
+                               const float * __restrict__ k, int nk) {
 
         int KERNEL_RADIUS=((nk-1)/2);
         extern __shared__ float data[];
@@ -575,12 +461,19 @@ namespace gpu {
             for(int id = start ;id < end ;id++){
 
                 index = idx + id*w;
-                if(id < 0){
-                    data[threadIdx.x + (count*blockDim.x)] = 0;//in[idx];
-                }else if(id > h-1){
-                    data[threadIdx.x + (count*blockDim.x)] = 0;//in[idx+(h-1)*w];
-                }else{
+
+                if(id < 0) {
+
+                    data[threadIdx.x + (count*blockDim.x)] = in[idx];
+
+                }else if(id > (h-1)) {
+
+                    data[threadIdx.x + (count*blockDim.x)] = in[idx + (h-1)*w];
+
+                }else {
+
                     data[threadIdx.x + (count*blockDim.x)] = in[index];
+
                 }
 
                 count = count +1;
@@ -590,15 +483,196 @@ namespace gpu {
         __syncthreads();
 
         float sum = 0;
+        float k_filt = 0;
+        int step = 0;
         if(idx < w && idy < h) {
+
             y = KERNEL_RADIUS + threadIdx.y;
 
-            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
-                sum += data[threadIdx.x + (y+i)*blockDim.x] * k[KERNEL_RADIUS + i];
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++) {
+
+                k_filt = k[KERNEL_RADIUS + i];
+                step = threadIdx.x + (y+i)*blockDim.x;
+                sum += data[step] * k_filt;
+            }
 
             out[gid] = sum;
+
+        }   
+
+    }
+
+    /*************
+     Author-Rutuja
+     Non-unit stride convolution using shared memory for two input arrays.
+     Each thread reading and writing non-coalesced input values to shared memory.
+     Each thread computing non strided convolution product for a single index location, bur for two
+     input data.The idea is to get 2 convolutions done in the same kernel to avoid kernel
+     overhead.
+    *************/
+
+    template<typename T>
+    __global__ void conv_colk(float* out_x, float* out_y,
+                              const T * in_x,const T * in_y,
+                              int w, int h, int p, const float * __restrict__ k, int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        int offset  = blockDim.x*(blockDim.y+(2*KERNEL_RADIUS));
+        extern __shared__ float data[];
+
+        int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        int idx = threadIdx.x + blockIdx.x*blockDim.x;
+        int y,index; // image based coordinate
+
+        if(threadIdx.y == 0){ 
+
+            const int start = idy - KERNEL_RADIUS;
+            const int end = idy + blockDim.y + KERNEL_RADIUS;
+            int count = 0;
+            for(int id = start ;id < end ;id++){
+                
+                index = idx + id*w;
+
+                if(id < 0){
+                
+                    data[threadIdx.x + (count*blockDim.x)] = in_x[idx];
+                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx];
+
+                }else if(id > (h-1)){
+                
+                    data[threadIdx.x + (count*blockDim.x)] = in_x[idx + (h-1)*w];
+                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx + (h-1)*w];
+
+                }else{
+
+                    data[threadIdx.x + (count*blockDim.x)] = in_x[index];
+                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[index];
+
+                }
+
+                count = count + 1;
+            }
+                                     
         }
-   
+
+        __syncthreads();
+
+        float sum_x = 0;
+        float sum_y = 0;
+        int gid = idx + idy*w;
+        float k_filt = 0;
+        int step = 0;
+
+        if(idx < w && idy < h) {
+
+            y = KERNEL_RADIUS + threadIdx.y;
+ 
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++) {
+                
+                k_filt = k[KERNEL_RADIUS + i];
+                step = threadIdx.x + (y+i)*blockDim.x;
+                sum_x = sum_x + (data[step] * k_filt);
+                sum_y = sum_y + (data[step + offset] * k_filt);
+                
+            }
+
+            out_x[gid] = sum_x;
+            out_y[gid] = sum_y;
+        }        
+
+    }
+
+    /*************
+     Author-Rutuja
+     Unit stride convolution using shared memory for two input arrays.
+     Each thread reading and writing non-coalesced input values to shared memory.
+     Each thread computing strided convolution product for a single index location, bur for two
+     input data.The idea is to get 2 convolutions done in the same kernel to avoid kernel
+     overhead.
+    *************/
+
+    template<typename T>
+    __global__ void conv_rowk(float* out_x,float* out_y, const T * in_x, const T * in_y, 
+                              int w, int h, int p, const float * __restrict__ k, int nk) {
+
+        int KERNEL_RADIUS=((nk-1)/2);
+        extern __shared__ float data[];
+
+        // global mem address of this thread
+        const int idx = threadIdx.x + blockDim.x*blockIdx.x;
+        const int idy = threadIdx.y + blockIdx.y*blockDim.y;
+        const int gid = idx + idy*w;
+        const int sharedmem_width = KERNEL_RADIUS*2 + blockDim.x;
+        const int left_start = idx - KERNEL_RADIUS;//global start of right pad
+        const int right_start = idx + blockDim.x ; //global start of left pad
+
+        int indr,indl;
+        int cnt_left = KERNEL_RADIUS + blockDim.x;//local start index for left pad
+        int offset  = blockDim.y*(blockDim.x+(2*KERNEL_RADIUS));
+         
+        if(threadIdx.x < KERNEL_RADIUS) {
+
+            indl = left_start + idy*w;
+
+            if(left_start < 0) {
+
+                    data[threadIdx.x + threadIdx.y*sharedmem_width] = in_x[idy*w];
+                    data[threadIdx.x + threadIdx.y*sharedmem_width + offset] = in_y[idy*w];
+
+            }else {
+
+                    data[threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[indl];
+                    data[threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[indl];
+
+            }
+
+        }
+
+        if(threadIdx.x < KERNEL_RADIUS) {
+
+            indr = right_start + idy*w;
+
+            if(right_start > (w-1)){
+
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[(w-1) + idy*w];
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[(w-1) + idy*w];
+
+            }else {
+
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[indr];
+                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[indr];
+
+            }
+
+        }
+
+        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in_x[gid];
+        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width) + offset] = in_y[gid];
+
+        __syncthreads();
+
+         // convolution
+        float sum_x = 0;
+        float sum_y = 0;
+        float k_filt = 0;
+        int step = 0;
+
+        if(idx < w && idy < h){
+
+            const int x = KERNEL_RADIUS + threadIdx.x;
+
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++){
+
+                k_filt = k[KERNEL_RADIUS + i];
+                step = x + i + threadIdx.y*sharedmem_width;
+                sum_x = sum_x + (data[step] * k_filt);
+                sum_y = sum_y + (data[step + offset] * k_filt);
+
+            }
+
+            out_x[gid] = sum_x;
+            out_y[gid] = sum_y;
+        }
 
     }
 
@@ -640,7 +714,7 @@ namespace gpu {
     //rutuja - strided row convolution kernel call
     template<typename T> void conv_row(float *out,const T* in,int w, int h, int pitch,float *k,int nk,cudaStream_t stream) {
 
-        dim3 block(8,32);
+        dim3 block(8,8);
         dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
         int kernel_radius = (nk-1)/2;
         conv_row_k<T><<<grid,block,((block.x+(2*kernel_radius))*block.y*sizeof(float)),stream>>>(out,in,w,h,pitch,k,nk);
@@ -657,6 +731,39 @@ namespace gpu {
 
     }
 
+    //rutuja - non strided
+    template<typename T> void conv_col_lk(float *out_x,float* out_y, const T* in_x, 
+                                          const T* in_y, int w, int h, int pitch, 
+                                          float *k, int nk, cudaStream_t stream) {
+
+        dim3 block(32,8);
+        dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+        int kernel_radius = (nk-1)/2;
+        size_t shared_mem  = (2 * (block.y + (2*kernel_radius)) * block.x) * sizeof(float);
+        conv_colk<T><<<grid,block,shared_mem,stream>>>(out_x, out_y, in_x, in_y, w, h, pitch, k, nk);
+
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) 
+            printf("Error: %s\n", cudaGetErrorString(err));
+
+    }
+
+    //rutuja - strided 
+    template<typename T> void conv_row_lk(float* out_x, float* out_y, const T * in_x, 
+                                          const T * in_y, int w, int h, int pitch,
+                                          float *k, int nk, cudaStream_t stream) {
+
+        dim3 block(8,8);
+        dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
+        int kernel_radius = (nk-1)/2;
+        size_t shared_mem  = (2 * (block.x + (2*kernel_radius)) * block.y) * sizeof(float);
+        conv_rowk<T><<<grid,block,shared_mem,stream>>>(out_x, out_y, in_x, in_y, w, h, pitch, k, nk);
+
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess)
+            printf("Error: %s\n", cudaGetErrorString(err));
+
+    }
 
     /// 2d convolution
     template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
@@ -665,7 +772,7 @@ namespace gpu {
         CHECK(self->w==self->pitch); // TODO: relax this/test this
         
 
-        CUTRY(cudaEventRecord(ws->start,ws->stream));
+        //CUTRY(cudaEventRecord(ws->start,ws->stream));
 #if 0
         conv_nonunit_stride<T>(ws->out,reinterpret_cast<T*>(ws->in),
                                self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1]);
@@ -695,8 +802,7 @@ namespace gpu {
          
             conv_row<T>(ws->tmp,reinterpret_cast<T*>(ws->in),
                                   self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
-            //conv_row<f32>(ws->out,ws->tmp,
-            //                      self->w,self->h,self->pitch,ws->kernels[0],ws->nkernel[0],ws->stream);
+    
             conv_col<f32>(ws->out,ws->tmp,
                                   self->w,self->h,self->pitch,ws->kernels[1],ws->nkernel[1],ws->stream);
              
@@ -720,11 +826,38 @@ namespace gpu {
 #endif
 
 
-        CUTRY(cudaEventRecord(ws->stop,ws->stream));
+        //CUTRY(cudaEventRecord(ws->stop,ws->stream));
 
 //        CUTRY(cudaEventSynchronize(ws->stop));
 //        CUTRY(cudaEventElapsedTime(&ws->last_elapsed_ms,ws->start,ws->stop));
     }
+
+    template<typename T> void conv_lk_stage3(struct SeparableConvolutionContext *self_x,
+                                             struct SeparableConvolutionContext *self_y,
+                                             const T* input_x, const T* input_y,int is_dev_ptr) { 
+
+        auto ws_x=static_cast<workspace*>(self_x->workspace);
+        ws_x->load_input<T>(input_x,self_x->pitch,self_x->h,is_dev_ptr);
+
+        auto ws_y=static_cast<workspace*>(self_y->workspace);
+        ws_y->load_input<T>(input_y,self_y->pitch,self_y->h,is_dev_ptr);
+
+        if((ws_x->nkernel[0]>0) && (ws_x->nkernel[1]>0)) {
+
+            conv_row_lk<T>(ws_x->tmp, ws_y->tmp, reinterpret_cast<T*>(ws_x->in), reinterpret_cast<T*>(ws_y->in),
+                                  self_x->w, self_x->h, self_x->pitch, ws_x->kernels[0], ws_x->nkernel[0], ws_x->stream);
+            conv_col_lk<f32>(ws_x->out, ws_y->out,ws_x->tmp,ws_y->tmp,
+                                  self_x->w, self_x->h, self_x->pitch, ws_x->kernels[1], ws_x->nkernel[1], ws_x->stream);
+
+        }  else {
+            // nothing to do I guess?
+            // cast to float?
+            EXCEPT("Not implemented");
+            // TODO
+        }
+
+    }
+
 }}} // end priv::conv::gpu
 
 //
@@ -851,3 +984,30 @@ void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolu
         ERR(self->logger,"ERROR SeparableConvolution: Compute problem.");
     }
 }
+
+void conv_lk(struct SeparableConvolutionContext *self_x, struct SeparableConvolutionContext *self_y,
+             enum SeparableConvolutionScalarType type, const void *im_x, const void *im_y) {
+
+    try {
+        switch(type) {
+#define CASE(T) case conv_##T: conv_lk_stage3<T>(self_x,self_y,(T*)im_x,(T*)im_y,1); break
+            CASE(u8);
+            CASE(u16);
+            CASE(u32);
+            //CASE(u64); // FIXME: 8-byte wide types are unsupported due to PAYLOAD calculation
+            CASE(i8);
+            CASE(i16);
+            CASE(i32);
+            //CASE(i64);
+            CASE(f32);
+            //CASE(f64);
+#undef CASE
+            default: EXCEPT("Unsupported input type");
+        }
+    } catch(const SeparableConvolutionError &e) {
+        ERR(self_x->logger,e.what());
+    } catch(...) {
+        ERR(self_x->logger,"ERROR SeparableConvolution: Compute problem.");
+    }
+
+} 

@@ -21,6 +21,9 @@ extern "C" {
 
     void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im);
 
+    void conv_lk(struct SeparableConvolutionContext *self_x, struct SeparableConvolutionContext *self_y,
+                 enum SeparableConvolutionScalarType type, const void *im_x, const void *im_y);
+
 #ifdef __cplusplus
 }
 #endif
