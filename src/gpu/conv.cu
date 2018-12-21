@@ -373,43 +373,48 @@ namespace gpu {
                                                
         int indr,indl; 
         int cnt_left = KERNEL_RADIUS + blockDim.x;//local start index for left pad
+       
+        if(idx < w && idy < h) {
+  
+            if(threadIdx.x < KERNEL_RADIUS){
         
-        if(threadIdx.x < KERNEL_RADIUS){
-        
-            indl = left_start + idy*w;
+                indl = left_start + idy*w;
 
-            if(left_start < 0){
+                if(left_start < 0){
 
-                data[threadIdx.x + threadIdx.y*sharedmem_width] = in[idy*w];
+                    data[threadIdx.x + threadIdx.y*sharedmem_width] = in[idy*w];
  
-            } else {
+                } else {
 
-                data[threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indl];
+                    data[threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indl];
 
+                }
             }
-        }
 
-        if(threadIdx.x < KERNEL_RADIUS) {
+            if(threadIdx.x < KERNEL_RADIUS) {
 
-            indr = right_start + idy*w;
+                indr = right_start + idy*w;
 
-            if(right_start > (w-1)) {
+                if(right_start > (w-1)) {
 
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[(w-1) + idy*w];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[(w-1) + idy*w];
                 
-            } else {
+                } else {
 
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indr];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[indr];
                   
-            }
+                }
                
-        }
+            }
         
-        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in[gid];        
+            data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in[gid];        
            
+           
+        }
+
         __syncthreads();
- 
-         // convolution
+    
+        // convolution
         float sum = 0;
         float k_filt = 0;
         int step = 0;
@@ -452,36 +457,40 @@ namespace gpu {
 
         int y; // image based coordinate
 
-        if(threadIdx.y == 0){
+        if(idx < w && idy < h) {
 
-            const int start = idy - KERNEL_RADIUS;
-            const int end = idy + blockDim.y + KERNEL_RADIUS;
-            int index;
-            int count = 0;
-            for(int id = start ;id < end ;id++){
+            if(threadIdx.y == 0) {
 
-                index = idx + id*w;
+                const int start = idy - KERNEL_RADIUS;
+                const int end = idy + blockDim.y + KERNEL_RADIUS;
+                int index;
+                int count = 0;
+                for(int id = start ;id < end ;id++) {
 
-                if(id < 0) {
+                    index = idx + id*w;
 
-                    data[threadIdx.x + (count*blockDim.x)] = in[idx];
+                    if(id < 0) {
 
-                }else if(id > (h-1)) {
+                        data[threadIdx.x + (count*blockDim.x)] = in[idx];
 
-                    data[threadIdx.x + (count*blockDim.x)] = in[idx + (h-1)*w];
+                    } else if(id > (h-1)) {
 
-                }else {
+                        data[threadIdx.x + (count*blockDim.x)] = in[idx + (h-1)*w];
 
-                    data[threadIdx.x + (count*blockDim.x)] = in[index];
+                    } else {
 
-                }
+                        data[threadIdx.x + (count*blockDim.x)] = in[index];
 
-                count = count +1;
-            }   
+                    }
+
+                    count = count +1;
+                }   
+            }
+       
         }
 
         __syncthreads();
-
+        
         float sum = 0;
         float k_filt = 0;
         int step = 0;
@@ -524,35 +533,39 @@ namespace gpu {
         int idx = threadIdx.x + blockIdx.x*blockDim.x;
         int y,index; // image based coordinate
 
-        if(threadIdx.y == 0){ 
+        if(idx < w && idy < h) {
 
-            const int start = idy - KERNEL_RADIUS;
-            const int end = idy + blockDim.y + KERNEL_RADIUS;
-            int count = 0;
-            for(int id = start ;id < end ;id++){
+            if(threadIdx.y == 0) { 
+
+                const int start = idy - KERNEL_RADIUS;
+                const int end = idy + blockDim.y + KERNEL_RADIUS;
+                int count = 0;
+                for(int id = start ;id < end ;id++){
                 
-                index = idx + id*w;
+                    index = idx + id*w;
 
-                if(id < 0){
+                    if(id < 0){
                 
-                    data[threadIdx.x + (count*blockDim.x)] = in_x[idx];
-                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx];
+                        data[threadIdx.x + (count*blockDim.x)] = in_x[idx];
+                        data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx];
 
-                }else if(id > (h-1)){
+                    }else if(id > (h-1)){
                 
-                    data[threadIdx.x + (count*blockDim.x)] = in_x[idx + (h-1)*w];
-                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx + (h-1)*w];
+                        data[threadIdx.x + (count*blockDim.x)] = in_x[idx + (h-1)*w];
+                        data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx + (h-1)*w];
 
-                }else{
+                    } else {
 
-                    data[threadIdx.x + (count*blockDim.x)] = in_x[index];
-                    data[threadIdx.x + (count*blockDim.x) + offset] = in_y[index];
+                        data[threadIdx.x + (count*blockDim.x)] = in_x[index];
+                        data[threadIdx.x + (count*blockDim.x) + offset] = in_y[index];
 
+                    }
+
+                    count = count + 1;
                 }
-
-                count = count + 1;
-            }
                                      
+            }
+
         }
 
         __syncthreads();
@@ -610,44 +623,47 @@ namespace gpu {
         int cnt_left = KERNEL_RADIUS + blockDim.x;//local start index for left pad
         int offset  = blockDim.y*(blockDim.x+(2*KERNEL_RADIUS));
          
-        if(threadIdx.x < KERNEL_RADIUS) {
+        if(idx < w && idy < h) {
+ 
+            if(threadIdx.x < KERNEL_RADIUS) {
 
-            indl = left_start + idy*w;
+                indl = left_start + idy*w;
 
-            if(left_start < 0) {
+                if(left_start < 0) {
 
                     data[threadIdx.x + threadIdx.y*sharedmem_width] = in_x[idy*w];
                     data[threadIdx.x + threadIdx.y*sharedmem_width + offset] = in_y[idy*w];
 
-            }else {
+                }else {
 
                     data[threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[indl];
                     data[threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[indl];
 
-            }
-
-        }
-
-        if(threadIdx.x < KERNEL_RADIUS) {
-
-            indr = right_start + idy*w;
-
-            if(right_start > (w-1)){
-
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[(w-1) + idy*w];
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[(w-1) + idy*w];
-
-            }else {
-
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[indr];
-                data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[indr];
+                }
 
             }
 
-        }
+            if(threadIdx.x < KERNEL_RADIUS) {
 
-        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in_x[gid];
-        data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width) + offset] = in_y[gid];
+                indr = right_start + idy*w;
+
+                if(right_start > (w-1)) {
+
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[(w-1) + idy*w];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[(w-1) + idy*w];
+
+                } else {
+
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[indr];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[indr];
+
+                }
+            }
+
+            data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width)] = in_x[gid];
+            data[threadIdx.x + KERNEL_RADIUS + (threadIdx.y*sharedmem_width) + offset] = in_y[gid];
+
+        }
 
         __syncthreads();
 
@@ -657,11 +673,11 @@ namespace gpu {
         float k_filt = 0;
         int step = 0;
 
-        if(idx < w && idy < h){
+        if(idx < w && idy < h) {
 
             const int x = KERNEL_RADIUS + threadIdx.x;
 
-            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++){
+            for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++) {
 
                 k_filt = k[KERNEL_RADIUS + i];
                 step = x + i + threadIdx.y*sharedmem_width;
@@ -736,7 +752,7 @@ namespace gpu {
                                           const T* in_y, int w, int h, int pitch, 
                                           float *k, int nk, cudaStream_t stream) {
 
-        dim3 block(32,8);
+        dim3 block(16,8);
         dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
         int kernel_radius = (nk-1)/2;
         size_t shared_mem  = (2 * (block.y + (2*kernel_radius)) * block.x) * sizeof(float);
@@ -753,7 +769,7 @@ namespace gpu {
                                           const T * in_y, int w, int h, int pitch,
                                           float *k, int nk, cudaStream_t stream) {
 
-        dim3 block(8,8);
+        dim3 block(16,8);
         dim3 grid(CEIL(w,block.x),CEIL(h,block.y));
         int kernel_radius = (nk-1)/2;
         size_t shared_mem  = (2 * (block.x + (2*kernel_radius)) * block.y) * sizeof(float);
