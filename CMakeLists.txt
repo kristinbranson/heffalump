@@ -44,13 +44,13 @@ set(CMAKE_C_STANDARD   99)
 set(CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(src)
-add_subdirectory(bench)
+#add_subdirectory(bench)
 if(WIN32)
     add_subdirectory(example)    
 endif()
 
 enable_testing()
-add_subdirectory(test)
+#add_subdirectory(test)
 
 include(InstallRequiredSystemLibraries)
 include(CPack) # enable packaging
