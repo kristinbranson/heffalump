@@ -181,8 +181,9 @@ auto absmax_context_t::compute(float* v,int n) const -> const absmax_context_t& 
 
 float absmax_context_t::to_host() const {
     float v;
-    CUTRY(cudaMemcpyAsync(&v,out,sizeof(v),cudaMemcpyDeviceToHost,stream));
-    CUTRY(cudaStreamSynchronize(stream));
+    CUTRY(cudaMemcpy(&v,out,sizeof(v),cudaMemcpyDeviceToHost));
+    //CUTRY(cudaMemcpyAsync(&v,out,sizeof(v),cudaMemcpyDeviceToHost,stream));
+    //CUTRY(cudaStreamSynchronize(stream));
     return v;
 }
 

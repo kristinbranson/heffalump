@@ -13,7 +13,7 @@
 #include "gradientHist.h"
 #include <stdlib.h>
 #include<stdio.h>
-
+#include <cuda_runtime.h>
 
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__)
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -21,6 +21,13 @@
 
 
 struct workspace {
+
+    /*void load_data(struct SeparableConvolutionContext *ws_dx, 
+                   struct SeparableConvolutionContext *ws_dy,
+                   const struct HOGImage image) {
+
+    }*/
+        
     struct SeparableConvolutionContext dx,dy;
     struct CropContext crp;
     struct gradientHistogram gh;
@@ -70,7 +77,6 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
     return ws;
 
 Error:
-
     return 0;
 }
 
@@ -109,7 +115,34 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     if(!self->workspace) return;
     struct workspace* ws=(struct workspace*)self->workspace;
     
-    // Compute gradients
+    //load image from host to device
+  
+    // get info from workspace for dx  
+    /*struct SeparableConvolutionContext *ctx_dx = &ws->dx;
+    struct workspace *ws_dx = ctx_dx->workspace;
+    int dx_h = ctx_dx->h;
+    int dx_pitch = ctx_dx->pitch;
+
+    // get info from workspace for dy
+    struct SeparableConvolutionContext *ctx_dy = &ws->dy;
+    struct workspace *ws_dy = ctx_dy->workspace;
+    int dy_h = ctx_dy->h;
+    int dy_pitch = ctx_dy->pitch;
+
+    printf("%d %d",dx_h,dx_pitch);
+    if(dx_h != dy_h) {return;}
+    if(dy_pitch != dx_pitch) {return;}
+
+    size_t n=sizeof(image.type)*dx_h*dx_pitch;
+
+    if(n > (struct workspace*)(ctx_dx->workspace)->nbytes_in) { // realloc                
+        ctx_dx->workspace->nbytes_in=((ctx_dx->workspace->nbytes_in+15)>>4)<<4;;
+        CUTRY(cudaFree(ctx_dx->workspace->in)); // noop if in is null
+        CUTRY(cudaMalloc(&ctx_dx->workspace->in,ctx_dx->workspace->nbytes_in));
+    }*/
+    
+  
+    //SeparableConvolution(&ws->dx, &ws->dy, image.type,image.buf);
     SeparableConvolution(&ws->dx,image.type,image.buf);
     SeparableConvolution(&ws->dy,image.type,image.buf);
  

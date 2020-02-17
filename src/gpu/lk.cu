@@ -423,13 +423,14 @@ namespace gpu {
         void compute(const void* im, enum LucasKanadeScalarType type) {
             try {
 
-                CUTRY(cudaMemcpyAsync(input,im,bytesof_input(type),cudaMemcpyHostToDevice,streams[0]));
+                //CUTRY(cudaMemcpyAsync(input,im,bytesof_input(type),cudaMemcpyHostToDevice,streams[0]));
+                CUTRY(cudaMemcpy(input,im,bytesof_input(type),cudaMemcpyHostToDevice));
                 CUTRY(cudaEventRecord(input_ready,streams[0]));
-                CUTRY(cudaStreamWaitEvent(streams[1],input_ready,0));
-                CUTRY(cudaStreamWaitEvent(streams[2],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],input_ready,0));
 
-                CUTRY(cudaStreamWaitEvent(streams[3],input_ready,0));
-                CUTRY(cudaStreamWaitEvent(streams[4],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],input_ready,0));
+                CUTRY(cudaStreamWaitEvent(streams[0],input_ready,0));
 
                 {
 
@@ -533,10 +534,10 @@ namespace gpu {
                 conv_lk(&stage3.yy,&stage3.yt,conv_f32,stage2.yy,stage2.yt);
 
                 // make sure stage3 is done
-                for(int i=0;i<4;++i) {
+                /*for(int i=0;i<4;++i) {
                     //CUTRY(cudaEventRecord(stage3.done,streams[i]));
                     CUTRY(cudaStreamWaitEvent(streams[i+1],stage3.done,0));
-                }
+                }*/
 
     //            LOG(logger,"%f %f %f",mdx.to_host(),mdy.to_host(),mdt.to_host());
                 {
@@ -603,9 +604,10 @@ namespace gpu {
 
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
-                CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
+                CUTRY(cudaMemcpy(buf,out,bytesof_output(),cudaMemcpyDeviceToHost));
                 //CUTRY(cudaMemcpyAsync(buf,stage3.xy.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
-                CUTRY(cudaStreamSynchronize(streams[4]));
+                //CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
             }

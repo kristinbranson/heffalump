@@ -144,7 +144,8 @@ namespace gpu {
                     CUTRY(cudaFree(in)); // noop if in is null
                     CUTRY(cudaMalloc(&in,nbytes_in));                
                 }
-                CUTRY(cudaMemcpyAsync(in,input,n,cudaMemcpyHostToDevice,stream));
+                //CUTRY(cudaMemcpyAsync(in,input,n,cudaMemcpyHostToDevice,stream));
+                CUTRY(cudaMemcpy(in,input,n,cudaMemcpyHostToDevice));
             } else {
                 // FIXME: possibly leaks any initially allocated input buffer
                 //        see design issues in issue tracker
@@ -782,7 +783,8 @@ namespace gpu {
     }
 
     /// 2d convolution
-    template<typename T> void conv(struct SeparableConvolutionContext *self,const T* input, int is_dev_ptr) {
+    template<typename T> void conv(struct SeparableConvolutionContext *self, const T* input, int is_dev_ptr) {
+
         auto ws=static_cast<workspace*>(self->workspace);
         ws->load_input<T>(input,self->pitch,self->h,is_dev_ptr);
         CHECK(self->w==self->pitch); // TODO: relax this/test this
@@ -927,7 +929,13 @@ void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     }
 }
 
-void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im){
+//void SeparableConvolution(struct SeparableConvolutionContext *self_dx, struct SeparableConvolutionContext *self_dy, 
+//                          enum SeparableConvolutionScalarType type, const void *im){
+void SeparableConvolution(struct SeparableConvolutionContext *self,
+                          enum SeparableConvolutionScalarType type, const void *im){
+
+
+    // convoltion x direction
     try {
         switch(type) {
     #define CASE(T) case conv_##T: conv<T>(self,(T*)im,0); break
@@ -949,6 +957,38 @@ void SeparableConvolution(struct SeparableConvolutionContext *self,enum Separabl
     } catch(...) {
         ERR(self->logger,"ERROR SeparableConvolution: Compute problem.");
     }
+
+    /*auto ws_dx=static_cast<workspace*>(self_dx->workspace);
+
+    //convolution y direction
+    try {
+        switch(type) {
+    #define CASE(T) case conv_##T: conv<T>(self_dy,(T*)ws_dx->in,1); break
+            CASE(u8);
+            CASE(u16);
+            CASE(u32);
+            // CASE(u64); // FIXME: 8-byte wide types are unsupported due to PAYLOAD calculation
+            CASE(i8);
+            CASE(i16);
+            CASE(i32);
+            // CASE(i64);
+            CASE(f32);
+            // CASE(f64);
+    #undef CASE
+            default: ERR(self_dy->logger,"Unsupported input type");
+        }
+    } catch(const SeparableConvolutionError &e) {
+        ERR(self_dy->logger,e.what());
+    } catch(...) {
+        ERR(self_dy->logger,"ERROR SeparableConvolution: Compute problem.");
+    }*/
+
+
+    //auto ws_dx=static_cast<workspace*>(self_dx->workspace);
+    //auto ws_dy=static_cast<workspace*>(self_dy->workspace);
+    //if(ws_dx->in != NULL)
+    //    ws_dy->in = ws_dx->in;
+
 }
 
 size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionContext *self) {
@@ -959,7 +999,8 @@ void SeparableConvolutionOutputCopy(const struct SeparableConvolutionContext *se
     try {
         CHECK(sizeof_output(self)<=nbytes);
         auto ws=static_cast<workspace*>(self->workspace);        
-        CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
+        //CUTRY(cudaMemcpyAsync(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost,ws->stream));
+        CUTRY(cudaMemcpy(out,ws->out,sizeof_output(self),cudaMemcpyDeviceToHost));
         CUTRY(cudaStreamSynchronize(ws->stream));
     } catch(const SeparableConvolutionError &e) {
         ERR(self->logger,e.what());
@@ -977,10 +1018,10 @@ void conv_with_stream(const struct SeparableConvolutionContext *self,cudaStream_
     ws->stream=stream;
 }
 
-void conv_no_copy(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im) {
+void conv_no_copy(struct SeparableConvolutionContext *self, enum SeparableConvolutionScalarType type, const void *im) {
     try {
         switch(type) {
-#define CASE(T) case conv_##T: conv<T>(self,(T*)im,1); break
+#define CASE(T) case conv_##T: conv<T>(self, (T*)im,1); break
             CASE(u8);
             CASE(u16);
             CASE(u32);

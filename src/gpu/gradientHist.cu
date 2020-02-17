@@ -463,9 +463,10 @@ namespace gpu {
             void copy_last_result(void *buf,size_t nbytes) const  {
                 try {
                     CHECK(result_nbytes()<=nbytes);
+                    CUTRY(cudaMemcpy(buf,out,result_nbytes(),cudaMemcpyDeviceToHost));
                     //original
-                    CUTRY(cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
-                    CUTRY(cudaStreamSynchronize(stream));
+                    //CUTRY(cudaMemcpyAsync(buf,out,result_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    //CUTRY(cudaStreamSynchronize(stream));
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
                 }
@@ -476,9 +477,10 @@ namespace gpu {
             void copy_last_magnitude(void *buf,size_t nbytes) const  {
                 try {
                     CHECK(intermediate_image_nbytes()<=nbytes);
+                    CUTRY(cudaMemcpy(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
                     //original
-                    CUTRY(cudaMemcpyAsync(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
-                    CUTRY(cudaStreamSynchronize(stream));
+                    //CUTRY(cudaMemcpyAsync(buf,mag,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    //CUTRY(cudaStreamSynchronize(stream));
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
                 }
@@ -489,8 +491,9 @@ namespace gpu {
                 try {
                     CHECK(intermediate_image_nbytes()<=nbytes);
                     //original
-                    CUTRY(cudaMemcpyAsync(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
-                    CUTRY(cudaStreamSynchronize(stream));
+                    CUTRY(cudaMemcpy(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost));
+                    //CUTRY(cudaMemcpyAsync(buf,theta,intermediate_image_nbytes(),cudaMemcpyDeviceToHost,stream));
+                    //CUTRY(cudaStreamSynchronize(stream));
                 } catch(const GradientHistogramError &e) {
                     ERR(logger,e.what());
                 }
