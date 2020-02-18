@@ -927,10 +927,11 @@ void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self) {
     }
 }
 
-void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im){
+void SeparableConvolution(struct SeparableConvolutionContext *self_dx, struct SeparableConvolutionContext *self_dy,
+                          enum SeparableConvolutionScalarType type,const void *im){
     try {
         switch(type) {
-    #define CASE(T) case conv_##T: conv<T>(self,(T*)im,0); break
+    #define CASE(T) case conv_##T: conv<T>(self_dx,(T*)im,0); break
             CASE(u8);
             CASE(u16);
             CASE(u32);
@@ -942,13 +943,38 @@ void SeparableConvolution(struct SeparableConvolutionContext *self,enum Separabl
             CASE(f32);
             // CASE(f64);
     #undef CASE
-            default: ERR(self->logger,"Unsupported input type");
+            default: ERR(self_dx->logger,"Unsupported input type");
         }
     } catch(const SeparableConvolutionError &e) {
-        ERR(self->logger,e.what());
+        ERR(self_dx->logger,e.what());
     } catch(...) {
-        ERR(self->logger,"ERROR SeparableConvolution: Compute problem.");
+        ERR(self_dx->logger,"ERROR SeparableConvolution: Compute problem.");
     }
+
+    auto ws_dx=static_cast<workspace*>(self_dx->workspace);
+
+    try {
+        switch(type) {
+    #define CASE(T) case conv_##T: conv<T>(self_dy,(T*)ws_dx->in,1); break
+            CASE(u8);
+            CASE(u16);
+            CASE(u32);
+            // CASE(u64); // FIXME: 8-byte wide types are unsupported due to PAYLOAD calculation
+            CASE(i8);
+            CASE(i16);
+            CASE(i32);
+            // CASE(i64);
+            CASE(f32);
+            // CASE(f64);
+    #undef CASE
+            default: ERR(self_dy->logger,"Unsupported input type");
+        }
+    } catch(const SeparableConvolutionError &e) {
+        ERR(self_dy->logger,e.what());
+    } catch(...) {
+        ERR(self_dy->logger,"ERROR SeparableConvolution: Compute problem.");
+    }
+
 }
 
 size_t SeparableConvolutionOutputByteCount(const struct SeparableConvolutionContext *self) {

@@ -110,8 +110,9 @@ void HOGCompute(struct HOGContext *self,const struct HOGImage image) {
     struct workspace* ws=(struct workspace*)self->workspace;
     
     // Compute gradients
-    SeparableConvolution(&ws->dx,image.type,image.buf);
-    SeparableConvolution(&ws->dy,image.type,image.buf);
+    //SeparableConvolution(&ws->dx,image.type,image.buf);
+    //SeparableConvolution(&ws->dy,image.type,image.buf);
+    SeparableConvolution(&ws->dx,&ws->dy,image.type,image.buf);
  
     if(self->crp_params.crop_flag){
 

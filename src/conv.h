@@ -69,7 +69,9 @@ void SeparableConvolutionTeardown(struct SeparableConvolutionContext *self);
     The result is stored in the context.  To extract the results to a buffer in RAM,
     see the `conv_alloc` and `SeparableConvolutionOutputCopy` functions.
 */
-void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im);
+//void SeparableConvolution(struct SeparableConvolutionContext *self,enum SeparableConvolutionScalarType type,const void *im);
+void SeparableConvolution(struct SeparableConvolutionContext *self_dx, struct SeparableConvolutionContext *self_dy,
+                          enum SeparableConvolutionScalarType type, const void *im);
 
 /** @Returns the number of bytes required for the output buffer
  *  @see SeparableConvolutionOutputCopy()
