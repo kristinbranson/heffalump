@@ -65,7 +65,7 @@ namespace gpu {
 __device__ float warpmax(float v) {
     // compute max across a warp
     for(int j=16;j>0;j>>=1)
-        v=fmaxf(v,__shfl_down(v,j));
+        v=fmaxf(v,__shfl_down_sync(v,j,1));
     return v;
 }
 

@@ -11,7 +11,8 @@
 #include "conv.h"
 #include "absmax.h"
 #include <stdint.h> // uint64_t
-#include <sstream> 
+#include <sstream>
+#include <functional> 
 #include <algorithm> 
 #include <stdexcept>
 
@@ -257,8 +258,9 @@ namespace gpu {
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;
-        float filtnorm[n] = {0.0f};
+        float* filtnorm = new float[n];
         for(auto i=0;i<n;++i) {
+            filtnorm[i] = 0.0;
             float r=i-c;
             float g=expf(-0.5f*r*r/s2);
             k[i]=g;//-g*r/s2;
@@ -269,13 +271,14 @@ namespace gpu {
         return k;
     }
 
-    static float* gaussian(float *k,int n,float sigma) {
+    static float* gaussian(float *k, int n,float sigma) {
         const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;
-        float filtnorm[n] = {0.0f}; 
+        float* filtnorm = new float[n]; 
         for(auto i=0;i<n;++i) {
+            filtnorm[i] = 0.0;
             float r=i-c;
             float g=expf(-0.5f*r*r/s2);
             k[i]=g;//norm*expf(-0.5f*r*r/s2);
