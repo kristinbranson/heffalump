@@ -254,7 +254,7 @@ namespace gpu {
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
-        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        //const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;
@@ -272,7 +272,7 @@ namespace gpu {
     }
 
     static float* gaussian(float *k, int n,float sigma) {
-        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        //const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;

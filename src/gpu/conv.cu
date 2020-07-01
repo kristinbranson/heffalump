@@ -20,9 +20,9 @@
 #define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
-#ifdef _MSC_VER
-#define noexcept
-#endif
+//#ifdef _MSC_VER
+//#define noexcept
+//#endif
 
 #define CEIL(num,den) ((num+den-1)/den)
 
