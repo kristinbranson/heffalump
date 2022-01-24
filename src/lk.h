@@ -109,6 +109,8 @@ void LucasKanadeOutputStrides(const struct LucasKanadeContext *self,struct Lucas
  */
 void LucasKanadeOutputShape(const struct LucasKanadeContext *self,struct LucasKanadeOutputDims* shape);
 
+void LucasKanadeSetLastInput(const struct LucasKanadeContext *self);
+
 #ifdef __cplusplus
 }
 #endif

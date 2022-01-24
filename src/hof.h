@@ -81,6 +81,10 @@ void HOFOutputStrides(const struct HOFContext *context,struct HOGFeatureDims *st
 */
 void HOFOutputShape(const struct HOFContext *context,struct HOGFeatureDims *shape);
 
+/********************************
+Set Last Input after frame skip
+**********************************/
+void HOFSetLastInput(struct HOFContext *self);
 
 #ifdef __cplusplus
 }

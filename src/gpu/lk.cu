@@ -592,9 +592,7 @@ namespace gpu {
 
         size_t bytesof_input_storage() const {
             return bytesof_input(lk_f64); // use worst-case scenario
-        }
-
-        
+        }        
 
         size_t bytesof_intermediate() const {
             return sizeof(float)*w*h;
@@ -612,6 +610,11 @@ namespace gpu {
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
             }
+        }
+
+        void set_last_input()
+        {
+            CUTRY(cudaMemset(last, 0, bytesof_input_storage()));
         }
 
         cudaStream_t output_stream() const {
@@ -731,4 +734,10 @@ void LucasKanadeOutputShape(const struct LucasKanadeContext *self,struct LucasKa
 cudaStream_t LucasKanadeOutputStream(const struct LucasKanadeContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     return ws->output_stream();
+}
+
+
+void LucasKanadeSetLastInput(const struct LucasKanadeContext *self) {
+    struct workspace* ws = (struct workspace*)self->workspace;
+    ws->set_last_input();
 }

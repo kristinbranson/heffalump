@@ -16,6 +16,7 @@
 
 #include <exception>
 #include <sstream>
+#include <iostream>
 
 #define LOG(L,...) L(0,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
 #define ERR(L,...) L(1,__FILE__,__LINE__,__FUNCTION__,__VA_ARGS__) 
@@ -83,6 +84,11 @@ namespace gpu {
             GradientHistogramCopyLastResult(&gh,buf,nbytes);
             //CropOutputCopy(&crpx,buf,nbytes);
             //LucasKanadeCopyOutput(&lk_, (float*)buf,nbytes);
+        }
+
+        void set_last_input() {
+
+            LucasKanadeSetLastInput(&lk_);
         }
 
         void compute(const void *input,enum HOFScalarType type) {    
@@ -164,4 +170,11 @@ void HOFOutputStrides(const struct HOFContext *self,struct HOGFeatureDims *strid
 void HOFOutputShape(const struct HOFContext *self,struct HOGFeatureDims *shape) {
     auto ws=static_cast<struct workspace*>(self->workspace);
     ws->output_shape(shape);
+}
+
+void HOFSetLastInput(struct HOFContext *self) {
+
+    std::cout << "hof wrapper " << std::endl;
+    auto ws = static_cast<struct workspace*>(self->workspace);
+    ws->set_last_input();
 }
