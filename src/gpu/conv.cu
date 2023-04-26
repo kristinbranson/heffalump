@@ -20,9 +20,9 @@
 #define CHECK(e) do{if(!(e)){EXCEPT("Expression evaluated to false:\n\t",#e);}}while(0)
 #define CUTRY(e) do{auto ecode=(e); if(ecode!=cudaSuccess) {EXCEPT("CUDA: ",cudaGetErrorString(ecode));}} while(0)
 
-//#ifdef _MSC_VER
-//#define noexcept
-//#endif
+#ifdef _MSC_VER
+#define noexcept
+#endif
 
 #define CEIL(num,den) ((num+den-1)/den)
 
@@ -382,7 +382,7 @@ namespace gpu {
 
                 if(left_start < 0){
 
-                    data[threadIdx.x + threadIdx.y*sharedmem_width] = in[idy*w];
+                    data[threadIdx.x + threadIdx.y*sharedmem_width] = 0;//in[idy*w];
  
                 } else {
 
@@ -397,7 +397,7 @@ namespace gpu {
 
                 if(right_start > (w-1)) {
 
-                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in[(w-1) + idy*w];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = 0;//in[(w-1) + idy*w];
                 
                 } else {
 
@@ -471,11 +471,11 @@ namespace gpu {
 
                     if(id < 0) {
 
-                        data[threadIdx.x + (count*blockDim.x)] = in[idx];
+                        data[threadIdx.x + (count*blockDim.x)] = 0;//in[idx];
 
                     } else if(id > (h-1)) {
 
-                        data[threadIdx.x + (count*blockDim.x)] = in[idx + (h-1)*w];
+                        data[threadIdx.x + (count*blockDim.x)] = 0;//in[idx + (h-1)*w];
 
                     } else {
 
@@ -546,13 +546,13 @@ namespace gpu {
 
                     if(id < 0){
                 
-                        data[threadIdx.x + (count*blockDim.x)] = in_x[idx];
-                        data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx];
+                        data[threadIdx.x + (count*blockDim.x)] = 0;//in_x[idx];
+                        data[threadIdx.x + (count*blockDim.x) + offset] = 0;//in_y[idx];
 
                     }else if(id > (h-1)){
                 
-                        data[threadIdx.x + (count*blockDim.x)] = in_x[idx + (h-1)*w];
-                        data[threadIdx.x + (count*blockDim.x) + offset] = in_y[idx + (h-1)*w];
+                        data[threadIdx.x + (count*blockDim.x)] = 0;//in_x[idx + (h-1)*w];
+                        data[threadIdx.x + (count*blockDim.x) + offset] = 0;//in_y[idx + (h-1)*w];
 
                     } else {
 
@@ -631,8 +631,8 @@ namespace gpu {
 
                 if(left_start < 0) {
 
-                    data[threadIdx.x + threadIdx.y*sharedmem_width] = in_x[idy*w];
-                    data[threadIdx.x + threadIdx.y*sharedmem_width + offset] = in_y[idy*w];
+                    data[threadIdx.x + threadIdx.y*sharedmem_width] = 0;//in_x[idy*w];
+                    data[threadIdx.x + threadIdx.y*sharedmem_width + offset] = 0;//in_y[idy*w];
 
                 }else {
 
@@ -649,8 +649,8 @@ namespace gpu {
 
                 if(right_start > (w-1)) {
 
-                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = in_x[(w-1) + idy*w];
-                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = in_y[(w-1) + idy*w];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width)] = 0;//in_x[(w-1) + idy*w];
+                    data[cnt_left + threadIdx.x + (threadIdx.y*sharedmem_width) + offset] = 0;//in_y[(w-1) + idy*w];
 
                 } else {
 

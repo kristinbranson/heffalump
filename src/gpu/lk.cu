@@ -241,20 +241,20 @@ namespace gpu {
             //out_dy[i]=(yunits/det)*(xy*xt+yy*yt);
 
             //changed above equation to match opticalflow Lukas kanade - rutuja
-           out_dx[cellidx]=(1/(det+2.2204e-16f))*(yy*xt-xy*yt);
-           out_dy[cellidx]=(1/(det+2.2204e-16f))*(-xy*xt+xx*yt);
+           out_dx[cellidx]=(1/(det+2.2204e-16f))*((yy*xt)-(xy*yt));
+           out_dy[cellidx]=(1/(det+2.2204e-16f))*((-xy*xt)+(xx*yt));
 
         } else {
             
            out_dx[cellidx]=0.0f;
            out_dy[cellidx]=0.0f;
 
-        }
+       }
        
     }
 
     static float* gaussian_derivative(float *k,int n,float sigma) {
-        //const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;
@@ -272,7 +272,7 @@ namespace gpu {
     }
 
     static float* gaussian(float *k, int n,float sigma) {
-        //const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
+        const float norm=0.3989422804014327f/sigma; // 1/sqrt(2 pi)/sigma
         const float s2=sigma*sigma;
         const float c=(n-1)/2.0f;
         float sum_filter = 0.0f;
@@ -592,7 +592,9 @@ namespace gpu {
 
         size_t bytesof_input_storage() const {
             return bytesof_input(lk_f64); // use worst-case scenario
-        }        
+        }
+
+        
 
         size_t bytesof_intermediate() const {
             return sizeof(float)*w*h;
@@ -605,16 +607,11 @@ namespace gpu {
         void copy_last_result(void * buf,size_t nbytes) const {
             try {
                 CUTRY(cudaMemcpyAsync(buf,out,bytesof_output(),cudaMemcpyDeviceToHost,streams[4]));
-                //CUTRY(cudaMemcpyAsync(buf,stage3.xy.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
+                //CUTRY(cudaMemcpyAsync(buf,stage3.xt.out,bytesof_intermediate(),cudaMemcpyDeviceToHost,streams[4]));
                 CUTRY(cudaStreamSynchronize(streams[4]));
             } catch(const LucasKanadeError& e) {
                 ERR(logger,e.what());
             }
-        }
-
-        void set_last_input()
-        {
-            CUTRY(cudaMemset(last, 0, bytesof_input_storage()));
         }
 
         cudaStream_t output_stream() const {
@@ -734,10 +731,4 @@ void LucasKanadeOutputShape(const struct LucasKanadeContext *self,struct LucasKa
 cudaStream_t LucasKanadeOutputStream(const struct LucasKanadeContext *self) {
     struct workspace* ws=(struct workspace*)self->workspace;
     return ws->output_stream();
-}
-
-
-void LucasKanadeSetLastInput(const struct LucasKanadeContext *self) {
-    struct workspace* ws = (struct workspace*)self->workspace;
-    ws->set_last_input();
 }
