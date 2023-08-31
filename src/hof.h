@@ -50,7 +50,7 @@ struct HOFContext {
     void *workspace;
 };
 
-struct HOFContext HOFInitialize(
+struct HOFContext* HOFInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOFParameters params, const struct CropParams crp_params); //struct interest_pnts *ips,int npatches,int ncells,int crop_flag);
 

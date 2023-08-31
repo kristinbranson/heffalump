@@ -54,15 +54,16 @@ struct HOGContext {
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...);
     int w,h;
     struct HOGParameters params;
-    const struct CropParams crp_params;
+    struct CropParams crp_params;
     //struct interest_pnts *ips;
     //int npatches;
     //int ncells;
     //int crop_flag;//enable or disable croping
     void *workspace;     
+
 };
 
-struct HOGContext HOGInitialize(
+struct HOGContext* HOGInitialize(
     void (*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...), 
     const struct HOGParameters params, 
     int w, int h, const struct CropParams crp_params);//struct interest_pnts *ips,int npatches,int ncells,int crop_flag);

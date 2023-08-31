@@ -67,6 +67,7 @@ static struct workspace* workspace_init(const struct HOGContext *self) {
         .hog_bin =1
     };
     GradientHistogramInit(&ws->gh,&params,self->logger);
+    cudaDeviceSynchronize();
     return ws;
 
 Error:
@@ -74,20 +75,28 @@ Error:
     return 0;
 }
 
-struct HOGContext HOGInitialize(
+struct HOGContext* HOGInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOGParameters params,
     int w, int h, const struct CropParams crp_params)
 {
-
-    struct HOGContext self={
+    struct HOGContext* self = malloc(sizeof(struct HOGContext));
+    if (self != NULL) {
+        self->w = w;
+        self->h = h;
+        self->logger=logger;
+        self->params=params;
+        self->crp_params=crp_params;
+        self->workspace = workspace_init(self);
+    }
+    /*struct HOGContext self={
         .logger=logger,
         .params=params,
         .w=w,.h=h,
         .crp_params=crp_params,
         .workspace=workspace_init(&self)
 
-    };
+    };*/
     return self;
 }
 
@@ -100,6 +109,7 @@ void HOGTeardown(struct HOGContext *self) {
         CropTearDown(&ws->crp);
         GradientHistogramDestroy(&ws->gh);
         free(self->workspace);
+        free(self); 
     }
 }
 

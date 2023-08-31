@@ -125,7 +125,10 @@ namespace gpu {
 
         /// WARNING: this destructor can throw
         ~workspace() {
-//            CUTRY(cudaFree(in));  // FIXME: leaks this... sometimes 'in' is not owned by this object
+#if 0
+            printf("DEBUG :: SeparableConvolution Destructor called ");
+#endif
+            //            CUTRY(cudaFree(in));  // FIXME: leaks this... sometimes 'in' is not owned by this object
             CUTRY(cudaFree(out)); 
             CUTRY(cudaFree(tmp));
             CUTRY(cudaFree(kernels[0]));

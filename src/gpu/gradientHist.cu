@@ -273,13 +273,22 @@ namespace gpu {
 
             // assign shared memory for block of weigths of 4 influenced cells 
             // and corresponding bins they belong to
+            //if(threadIdx.x==0 && threadIdx.y==0 && blockIdx.x==0 && blockIdx.y==0)
+            //    printf("%d-%d\n", w, h);
+#if 1            
+            //local thread Id
+            const int local_threadId = blockDim.x*threadIdx.y + threadIdx.x;
+            
+            //variables for shared memory
+            const int stride = 4; // stride from cell(i-1) - cell(j-1) to celli-cellj
+            const int sz_nw = 3;
+            const int neighbor_elems = sz_nw * sz_nw;
 
             extern __shared__ float hist[];
-                
-            hist[threadIdx.x + threadIdx.y * (blockDim.x+1)] = 0;
+            hist[threadIdx.x + threadIdx.y * (blockDim.x + 1)] = 0;
             if(threadIdx.x==0) 
                 hist[threadIdx.x + blockDim.x + threadIdx.y * (blockDim.x+1)] = 0;
-
+            
             __syncthreads();
 
             // current input sample position
@@ -292,25 +301,20 @@ namespace gpu {
 
             int celli,cellj,neighborx,stepy,cellidx,th,thn,step,jmp;
             float dx,dy,mx,my,c00,c01,c10,c11,m,mth;
-            bool inx,iny;
-            
-            //variables for shared memory
-            const int stride = 4;
-            const int sz_nw = 3;
-            const int neighbor_elems = sz_nw*sz_nw;
+            bool inx, iny;
 
-            if(in_bounds(rx,ry,w,h)) {
-            
+            if (in_bounds(rx, ry, w, h)) {
+
 #if 0
-            //Useful for checking normalization
-              const int th=0.0f;
-              const float m=1.0f;
+                //Useful for checking normalization
+                const int th = 0.0f;
+                const float m = 1.0f;
 #else
                 th = theta_bins[rx + ry * w];
                 m = mag[rx + ry * w];
                 mth = fpartf(theta_bins[rx + ry * w]);
 #endif
- 
+
                 // compute weights for 4 influenced cells (tl,tr,bl,br)
                 // indices for the current cell (rx,ry) is hitting
                 celli = rx / cellw;
@@ -325,65 +329,198 @@ namespace gpu {
                 stepy = dy < 0.0f ? -1 : 1;
                 cellidx = celli + cellj * ncellw;
 
+
                 inx = (0 <= (neighborx + celli) && (neighborx + celli) < ncellw);
                 iny = (0 <= (stepy + cellj) && (stepy + cellj) < ncellh);
 
                 mx = fabsf(dx);
                 my = fabsf(dy);
-                c00 = m * (1.0f-mx)  * (1.0f-my) * cellnorm(celli          ,cellj      ,ncellw,ncellh,cellw,cellh);
-                c01 = m * (1.0f-mx)       * (my) * cellnorm(celli+neighborx,cellj      ,ncellw,ncellh,cellw,cellh);
-                c10 = m * (mx)  * (1.0f-my)      * cellnorm(celli          ,cellj+stepy,ncellw,ncellh,cellw,cellh);
-		c11 = m * (mx)       * (my)      * cellnorm(celli+neighborx,cellj+stepy,ncellw,ncellh,cellw,cellh);
-              
+                c00 = m * (1.0f - mx)  * (1.0f - my) * cellnorm(celli, cellj, ncellw, ncellh, cellw, cellh);
+                c01 = m * (1.0f - mx)       * (my)* cellnorm(celli + neighborx, cellj, ncellw, ncellh, cellw, cellh);
+                c10 = m * (mx)  * (1.0f - my)      * cellnorm(celli, cellj + stepy, ncellw, ncellh, cellw, cellh);
+                c11 = m * (mx)       * (my)* cellnorm(celli + neighborx, cellj + stepy, ncellw, ncellh, cellw, cellh);
+
                 // store the 8-neighborhood cell hist for a block in shared memory                    
-                thn=((th+1) >= nbins ) ? 0 : (th+1);
+                thn = ((th + 1) >= nbins) ? 0 : (th + 1);
 
-                step = stride + (neighbor_elems) * th;
-                atomicAdd(hist + step , (1-mth) * c00);   
-                step = (sz_nw * stepy + stride) + (neighbor_elems) * th;
-                if (iny) atomicAdd(hist + step ,(1-mth) * c10);
-                step = (neighborx + stride) + (neighbor_elems) * th;
-                if (inx) atomicAdd(hist + step ,(1-mth) * c01);
-                step = (neighborx + sz_nw * stepy + stride) +  (neighbor_elems) * th;
-                if (inx && iny) atomicAdd(hist + step ,(1-mth) * c11);
+                step = stride + (neighbor_elems)* th; // index for center cell in a 8-neighborhood cell
+                atomicAdd(hist + step, (1 - mth) * c00);
+                step = (sz_nw * stepy + stride) + (neighbor_elems)* th;
+                if (iny) atomicAdd(hist + step, (1 - mth) * c10);
+                step = (neighborx + stride) + (neighbor_elems)* th;
+                if (inx) atomicAdd(hist + step, (1 - mth) * c01);
+                step = (neighborx + sz_nw * stepy + stride) + (neighbor_elems)* th;
+                if (inx && iny) atomicAdd(hist + step, (1 - mth) * c11);
 
-                step =  stride + (neighbor_elems) * thn;
-                atomicAdd(hist + step ,(mth) * c00);
-                step = (sz_nw * stepy + stride) + (neighbor_elems) * thn;
-                if (iny) atomicAdd(hist + step , (mth) * c10);
-                step = (neighborx + stride) + (neighbor_elems) * thn;
-                if (inx) atomicAdd(hist + step ,(mth) * c01);
-                step = (neighborx + sz_nw * stepy + stride) + (neighbor_elems) * thn;
-                if (inx && iny) atomicAdd(hist + step ,(mth) * c11);
+                step = stride + (neighbor_elems)* thn;
+                atomicAdd(hist + step, (mth)* c00);
+                step = (sz_nw * stepy + stride) + (neighbor_elems)* thn;
+                if (iny) atomicAdd(hist + step, (mth)* c10);
+                step = (neighborx + stride) + (neighbor_elems)* thn;
+                if (inx) atomicAdd(hist + step, (mth)* c01);
+                step = (neighborx + sz_nw * stepy + stride) + (neighbor_elems)* thn;
+                if (inx && iny) atomicAdd(hist + step, (mth)* c11);
 
-                         
-                __syncthreads(); 
-            
+                __syncthreads();
+                //if(blockIdx.x==gridDim.x-1 && blockIdx.y==gridDim.y-1)
+                //    printf("rx-%d ry-%d local-thread%d\n", rx, ry, local_threadId);
+
                 // write the hist from shared to global memory
-	        if(threadIdx.x < 8 && threadIdx.y == 0){
-               
-	            float * b = out + binpitch * threadIdx.x + cellidx;
+                if (threadIdx.x < 8 && threadIdx.y == 0) {
+
+                    float * b = out + binpitch * threadIdx.x + cellidx;
                     float tmp = 0;
-	            for(int step_j = -1 ;step_j < sz_nw-1 ;step_j++){
+                    for (int step_j = -1; step_j < sz_nw - 1; step_j++) {
 
-		        for(int step_i = -1 ;step_i < sz_nw-1 ;step_i++){
+                        for (int step_i = -1; step_i < sz_nw - 1; step_i++) {
 
-                            tmp = hist[ (step_i + step_j * sz_nw + stride) + (neighbor_elems) * threadIdx.x];
-                            if(tmp != 0){
+                            tmp = hist[(step_i + step_j * sz_nw + stride) + (neighbor_elems)* threadIdx.x];
+                            if (tmp != 0) {
 
                                 inx = (0 <= (step_i + celli) && (step_i + celli) < ncellw);
                                 iny = (0 <= (step_j + cellj) && (step_j + cellj) < ncellh);
 
-                                if (inx && iny){ 
-                                 			       
-                                    jmp = step_i + step_j * ncellw;     
-			            atomicAdd(b + jmp ,tmp);
-                                }  
-		            } 
-		        }
-	            }                    
-                }     
-            }          
+                                if (inx && iny) {
+
+                                    jmp = step_i + step_j * ncellw;
+                                    atomicAdd(b + jmp, tmp);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+#endif
+
+#if 0
+                //gradhist_shared v2   
+                const int shared_mem_ncell = 5;
+                const int shared_mem_sz = shared_mem_ncell * shared_mem_ncell;
+                const int center_cell_stride = shared_mem_sz / 2; // the center cell is always the cell i,j 
+                                                                 // corresponding to first thread in block
+                const int local_threadId = threadIdx.x + threadIdx.y * blockDim.x;
+
+                // shared mem initialization
+                extern __shared__ float hist[];
+                if(threadIdx.y==0){
+                    for (int i = 0; i < shared_mem_sz; i++) {
+                        hist[(threadIdx.x*shared_mem_sz) + i] = 0;
+                    }
+                }
+                /*hist[threadIdx.x + threadIdx.y * (blockDim.x + 1)] = 0;
+                if (threadIdx.x == 0)
+                    hist[threadIdx.x + blockDim.x + threadIdx.y * (blockDim.x + 1)] = 0;*/
+
+                __syncthreads();
+
+                // current input sample position
+                const int ry = (threadIdx.y) + blockIdx.y * blockDim.y;
+                const int rx = (threadIdx.x) + blockIdx.x * blockDim.x;
+
+                const int ncellh = FLOOR(h, cellh);
+                const int ncellw = FLOOR(w, cellw);
+                const int binpitch = ncellw * ncellh;
+
+                int celli, cellj, cellidx;
+                int celli0, cellj0, stepi0, stepj0;
+                int cell_stride;
+
+                int neighborx, stepy, th, thn, step, jmp;
+                float dx, dy, mx, my, c00, c01, c10, c11, m, mth;
+                bool inx, iny;
+
+                if (in_bounds(rx, ry, w, h)) {
+
+#if 0
+                    //Useful for checking normalization
+                    const int th = 0.0f;
+                    const float m = 1.0f;
+#else
+                    th = theta_bins[rx + ry * w];
+                    m = mag[rx + ry * w];
+                    mth = fpartf(theta_bins[rx + ry * w]);
+#endif
+
+                    // compute weights for 4 influenced cells (tl,tr,bl,br)
+                    // indices for the current cell (rx,ry) is hitting
+                    celli = rx / cellw;
+                    cellj = ry / cellh;
+
+                    // celli cellj corresponding to threadIdx=0 threadIdy=0 in this block
+                    celli0 = (blockIdx.x * blockDim.x) / cellw;
+                    cellj0 = (blockIdx.y * blockDim.y) / cellh;
+                    stepi0 = celli - celli0;
+                    stepj0 = cellj - cellj0;
+
+                    // fractional coordinate relative to cell center
+                    // should be less than one
+                    dx = (rx - celli * cellw + 0.5f) / float(cellw) - 0.5f;
+                    dy = (ry - cellj * cellh + 0.5f) / float(cellh) - 0.5f;
+
+                    neighborx = dx < 0.0f ? -1 : 1;
+                    stepy = dy < 0.0f ? -1 : 1;
+                    cellidx = celli + cellj * ncellw;
+
+                    inx = (0 <= (neighborx + celli) && (neighborx + celli) < ncellw);
+                    iny = (0 <= (stepy + cellj) && (stepy + cellj) < ncellh);
+
+                    mx = fabsf(dx);
+                    my = fabsf(dy);
+                    c00 = m * (1.0f - mx)  * (1.0f - my) * cellnorm(celli, cellj, ncellw, ncellh, cellw, cellh);
+                    c01 = m * (1.0f - mx)       * (my)* cellnorm(celli + neighborx, cellj, ncellw, ncellh, cellw, cellh);
+                    c10 = m * (mx)  * (1.0f - my)      * cellnorm(celli, cellj + stepy, ncellw, ncellh, cellw, cellh);
+                    c11 = m * (mx)       * (my)* cellnorm(celli + neighborx, cellj + stepy, ncellw, ncellh, cellw, cellh);
+
+                    // store the 8-neighborhood cell hist for a block in shared memory                    
+                    thn = ((th + 1) >= nbins) ? 0 : (th + 1);
+
+                    cell_stride = stepj0*shared_mem_ncell  + center_cell_stride + stepi0;
+                    step = cell_stride + (shared_mem_sz)* th; // index for center cell in a 8-neighborhood cell
+                    atomicAdd(hist + step, (1 - mth) * c00);
+                    step = (shared_mem_ncell * stepy + cell_stride) + (shared_mem_sz)* th;
+                    if (iny) atomicAdd(hist + step, (1 - mth) * c10);
+                    step = (neighborx + cell_stride) + (shared_mem_sz)* th;
+                    if (inx) atomicAdd(hist + step, (1 - mth) * c01);
+                    step = (neighborx + shared_mem_ncell * stepy + cell_stride) + (shared_mem_sz)* th;
+                    if (inx && iny) atomicAdd(hist + step, (1 - mth) * c11);
+
+                    step = cell_stride + (shared_mem_sz)* thn;
+                    atomicAdd(hist + step, (mth)* c00);
+                    step = (shared_mem_ncell * stepy + cell_stride) + (shared_mem_sz)* thn;
+                    if (iny) atomicAdd(hist + step, (mth)* c10);
+                    step = (neighborx + cell_stride) + (shared_mem_sz)* thn;
+                    if (inx) atomicAdd(hist + step, (mth)* c01);
+                    step = (neighborx + shared_mem_ncell * stepy + cell_stride) + (shared_mem_sz)* thn;
+                    if (inx && iny) atomicAdd(hist + step, (mth)* c11);
+
+                    __syncthreads();
+
+                    // write the hist from shared to global memory
+                    if (threadIdx.x < nbins && threadIdx.y == 0) {
+
+                        float * b = out + binpitch * threadIdx.x + cellidx;
+                        float tmp = 0;
+                        for (int step_j = -(shared_mem_ncell/2); step_j <= (shared_mem_ncell/2); step_j++) {
+
+                            for (int step_i = -(shared_mem_ncell/2); step_i <= (shared_mem_ncell/2); step_i++) {
+
+                                tmp = hist[(step_i + step_j * shared_mem_ncell + center_cell_stride) + (shared_mem_sz)* threadIdx.x];
+                                if (tmp != 0) {
+
+                                    inx = (0 <= (step_i + celli) && (step_i + celli) < ncellw);
+                                    iny = (0 <= (step_j + cellj) && (step_j + cellj) < ncellh);
+
+                                    if (inx && iny) {
+
+                                        jmp = step_i + step_j * ncellw;
+                                        atomicAdd(b + jmp, tmp);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+#endif
                   
         }
 
@@ -402,6 +539,9 @@ namespace gpu {
 
             ~workspace() {
                 try {
+#if 0
+                    printf("DEBUG :: Gradient Destructor called ");
+#endif     
                     CUTRY(cudaFree(out));
                     CUTRY(cudaFree(dx));
                     CUTRY(cudaFree(dy));
@@ -448,11 +588,18 @@ namespace gpu {
                         dim3 grid(
                             CEIL(params.image.w ,block.x),
                             CEIL(params.image.h ,block.y));
+#if 1
                         int sz_nw = 3; // size of 8-neighborhood
-                        size_t shared_mem = (block.x*block.y*sz_nw*sz_nw)*sizeof(float);
+                        size_t shared_mem = (block.x*block.y*sz_nw*sz_nw*params.nbins)*sizeof(float);
+#endif
+
+#if 0 
+                        int sz_nw = 5;
+                        size_t shared_mem = (sz_nw*sz_nw*params.nbins)*sizeof(float);
+#endif     
                         gradhist_shared<<<grid,block,shared_mem,stream>>>(out,mag,theta,
                                                             params.image.w,params.image.h,
-                                                            params.nbins,params.cell.w,params.cell.h);                                                                     
+                                                            params.nbins,params.cell.w,params.cell.h);                                                                   
 
                     }
                 } catch(const GradientHistogramError &e) {

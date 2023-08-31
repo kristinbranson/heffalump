@@ -34,7 +34,7 @@ namespace gpu {
         : logger(logger)
         {
 
-            crp = CropInit(params.cell.w,params.cell.h,crp_params);
+            crp = CropInit(params.cell.w, params.cell.h, crp_params);
             struct gradientHistogramParameters ghparams;
             ghparams.cell.w=params.cell.w;
             ghparams.cell.h=params.cell.h;
@@ -48,6 +48,7 @@ namespace gpu {
             lk_=LucasKanadeInitialize(logger,
                 params.input.w,params.input.h,params.input.pitch,params.lk);
             GradientHistogramWithStream(&gh,LucasKanadeOutputStream(&lk_));
+            cudaDeviceSynchronize();
         }
 
         ~workspace() {
@@ -120,18 +121,24 @@ namespace gpu {
 
 using namespace priv::hof::gpu;
 
-struct HOFContext HOFInitialize(
+struct HOFContext* HOFInitialize(
     void(*logger)(int is_error,const char *file,int line,const char* function,const char *fmt,...),
     const struct HOFParameters params, const struct CropParams crp_params)
 {
     workspace *ws=nullptr;
-    struct HOFContext self={logger,params,crp_params,nullptr};
+    //struct HOFContext self={logger,params,crp_params,nullptr};
+    struct HOFContext* self = new HOFContext();
+    self->logger = logger;
+    self->crp_params = crp_params;
+    self->params = params;
+    self->workspace = nullptr;
+
     try {
         ws=new workspace(logger,params,crp_params);
-        self.workspace=ws;
+        self->workspace=ws;
     } catch(const std::exception &e) {
         delete ws;
-        self.workspace=nullptr;
+        self->workspace=nullptr;
         ERR(logger,"HOF: %s",e.what());
     } catch (...) {
         ERR(logger,"HOF: Exception.");
@@ -142,7 +149,8 @@ struct HOFContext HOFInitialize(
 
 void HOFTeardown(struct HOFContext *self) {
     auto ws=static_cast<struct workspace*>(self->workspace);
-    delete ws;    
+    delete ws;   
+    delete self;
 }
 
 

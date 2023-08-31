@@ -11,6 +11,7 @@
 #include<stdio.h>
 #include<assert.h>
 #include<iostream>
+ 
 
 #define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 #define CEIL(num,den) ((num+den-1)/den)
@@ -93,16 +94,17 @@ __global__ void crop(float *out_x ,float* out_y ,const float *in_x ,const float*
 struct workspace{  
  
     workspace(struct CropContext *crp){
-     
+ 
+
         gpuErrChk(cudaMalloc(&out_x ,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
         gpuErrChk(cudaMalloc(&out_y ,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
         gpuErrChk(cudaMemset(out_x,0,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
         gpuErrChk(cudaMemset(out_y,0,nbytes_cropsz(crp->halfcropsz,crp->crp_params.npatches)));
-             
+
     }
 
     ~workspace(){    
-                
+
         gpuErrChk(cudaFree(out_x));
         gpuErrChk(cudaFree(out_y));
 

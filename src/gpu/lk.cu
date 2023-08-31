@@ -379,6 +379,9 @@ namespace gpu {
 
         ~workspace() {
             try {
+#if 0
+                printf("DEBUG :: lukasKanade Destructor called");
+#endif
                 for(int i=0;i<5;++i) {
                     CUTRY_NOTHROW(logger,cudaStreamSynchronize(streams[i]));
                     CUTRY_NOTHROW(logger,cudaStreamDestroy(streams[i]));
